@@ -48,12 +48,10 @@ function NewProjectDialog({
   open,
   onOpenChange,
   onCreated,
-  baseDomain,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: () => void
-  baseDomain: string | null
 }) {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>("github")
@@ -66,13 +64,11 @@ function NewProjectDialog({
   const [publicUrl, setPublicUrl] = useState("")
   const [projectName, setProjectName] = useState("")
   const [branch, setBranch] = useState("main")
-  const [subdomain, setSubdomain] = useState("")
   const [buildCommand, setBuildCommand] = useState("")
   const [installCommand, setInstallCommand] = useState("")
   const [outputDir, setOutputDir] = useState("")
   const [deploying, setDeploying] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const domainSuffix = baseDomain ? `.${baseDomain}` : null
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -114,7 +110,6 @@ function NewProjectDialog({
       setPublicUrl("")
       setProjectName("")
       setBranch("main")
-      setSubdomain("")
       setBuildCommand("")
       setInstallCommand("")
       setOutputDir("")
@@ -131,7 +126,6 @@ function NewProjectDialog({
     setRepoSearch("")
     setProjectName(repo.name)
     setBranch(repo.defaultBranch)
-    setSubdomain(repo.name.toLowerCase().replace(/[^a-z0-9-]/g, "-"))
   }
 
   function parsePublicUrl(url: string) {
@@ -141,7 +135,6 @@ function NewProjectDialog({
       const repoName = match[2]
       setProjectName(repoName)
       setBranch("main")
-      setSubdomain(repoName.toLowerCase().replace(/[^a-z0-9-]/g, "-"))
     }
   }
 
@@ -149,11 +142,9 @@ function NewProjectDialog({
 
   const canDeploy =
     projectName.length > 0 &&
-    subdomain.length > 0 &&
     branch.length > 0 &&
     repoUrl.length > 0 &&
-    /^[a-z0-9-]{1,64}$/.test(projectName) &&
-    /^[a-z0-9-]{1,63}$/.test(subdomain)
+    /^[a-z0-9-]{1,64}$/.test(projectName)
 
   async function handleDeploy() {
     if (!canDeploy) return
@@ -166,7 +157,7 @@ function NewProjectDialog({
           name: projectName,
           repo_url: repoUrl,
           branch,
-          subdomain,
+          subdomain: projectName,
           ...(buildCommand && { build_command: buildCommand }),
           ...(installCommand && { install_command: installCommand }),
           ...(outputDir && { output_dir: outputDir }),
@@ -304,32 +295,13 @@ function NewProjectDialog({
             <Input
               placeholder="my-project"
               value={projectName}
-              onChange={(e) => {
-                const v = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")
-                setProjectName(v)
-                setSubdomain(v)
-              }}
+              onChange={(e) => setProjectName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Branch</label>
-              <Input value={branch} onChange={(e) => setBranch(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Subdomain</label>
-              <div className="flex">
-                <Input
-                  className="rounded-r-none border-r-0"
-                  value={subdomain}
-                  onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                />
-                <span className="inline-flex h-9 items-center rounded-r-md border bg-muted px-2 text-xs text-muted-foreground">
-                  {domainSuffix ?? "—"}
-                </span>
-              </div>
-            </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Branch</label>
+            <Input value={branch} onChange={(e) => setBranch(e.target.value)} />
           </div>
 
           <details className="group">
@@ -369,28 +341,18 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [baseDomain, setBaseDomain] = useState<string | null>(null)
 
   const loadProjects = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [projRes, domainRes] = await Promise.all([
-        fetch("/api/projects"),
-        fetch("/api/domains"),
-      ])
+      const projRes = await fetch("/api/projects")
       if (!projRes.ok) {
         const data = await projRes.json().catch(() => ({}))
         throw new Error(data.error || "Failed to load projects")
       }
       const data = (await projRes.json()) as Project[]
       setProjects(data)
-      if (domainRes.ok) {
-        const domains = await domainRes.json()
-        const verified = domains.find((d: { verified: boolean }) => d.verified)
-        if (verified) setBaseDomain(verified.domain)
-        else if (domains.length > 0) setBaseDomain(domains[0].domain)
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load projects")
     } finally {
@@ -413,7 +375,7 @@ export default function ProjectsPage() {
           <Plus className="size-3.5" />
           New Project
         </Button>
-        <NewProjectDialog open={open} onOpenChange={setOpen} onCreated={() => void loadProjects()} baseDomain={baseDomain} />
+        <NewProjectDialog open={open} onOpenChange={setOpen} onCreated={() => void loadProjects()} />
       </div>
 
       {loading ? (
