@@ -1,5 +1,4 @@
 import {
-  BarChart3,
   FolderGit2,
   GitBranch,
   Globe,
@@ -50,14 +49,6 @@ export const navigationGroups: NavGroup[] = [
         subItems: [
           { title: "All Deployments", url: "/deployments" },
           { title: "Build Logs", url: "/deployments/logs" },
-        ],
-      },
-      {
-        title: "Analytics",
-        icon: BarChart3,
-        url: "/analytics",
-        subItems: [
-          { title: "Overview", url: "/analytics" },
         ],
       },
     ],

@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
+  Activity,
+  AlertTriangle,
   ArrowLeft,
+  BarChart3,
   Check,
   Clock,
   Copy,
@@ -89,7 +92,36 @@ type Domain = {
   sslStatus: "pending" | "provisioning" | "active" | "failed"
 }
 
-type Tab = "overview" | "logs" | "domains" | "settings"
+type AnalyticsBucket = {
+  bucket: string
+  requests: number
+  errors: number
+  avg_ms: number
+}
+
+type AnalyticsData = {
+  buckets: AnalyticsBucket[]
+  total_requests: number
+  total_errors: number
+  avg_response_ms: number
+  error_rate: number
+}
+
+const ANALYTICS_PERIODS = [
+  { label: "24h", value: "24h" },
+  { label: "7d", value: "7d" },
+  { label: "30d", value: "30d" },
+] as const
+
+function formatBucketTime(iso: string, period: string): string {
+  const d = new Date(iso)
+  if (period === "24h") {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  }
+  return d.toLocaleDateString([], { month: "short", day: "numeric" })
+}
+
+type Tab = "overview" | "analytics" | "logs" | "domains" | "settings"
 
 function statusBadgeClasses(status: string): string {
   switch (status) {
@@ -707,6 +739,9 @@ export default function ProjectDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("overview")
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [analyticsPeriod, setAnalyticsPeriod] = useState("24h")
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false)
   const previousDeploymentStatus = useRef<string | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
 
@@ -783,6 +818,17 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [logs])
+
+  // Fetch analytics when tab is active
+  useEffect(() => {
+    if (tab !== "analytics" || !project?.id) return
+    setLoadingAnalytics(true)
+    fetch(`/api/analytics?projectId=${encodeURIComponent(project.id)}&period=${encodeURIComponent(analyticsPeriod)}`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (data) setAnalyticsData(data as AnalyticsData) })
+      .catch(() => {})
+      .finally(() => setLoadingAnalytics(false))
+  }, [tab, project?.id, analyticsPeriod])
 
   async function handleDeploy() {
     if (!project) return
@@ -927,7 +973,7 @@ export default function ProjectDetailPage() {
       {/* Tabs */}
       <div className="-mx-4 border-b px-4 sm:-mx-6 sm:px-6">
         <nav className="flex gap-6">
-          {(["overview", "logs", "domains", "settings"] as const).map((t) => (
+          {(["overview", "analytics", "logs", "domains", "settings"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -947,6 +993,158 @@ export default function ProjectDetailPage() {
       <div className="pt-6">
         {tab === "domains" ? (
           <DomainsTab project={project} />
+        ) : tab === "analytics" ? (
+          <div className="space-y-6">
+            {/* Period selector */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <BarChart3 className="size-4" />
+                <span className="text-sm font-medium">Request Metrics</span>
+              </div>
+              <div className="flex rounded-md border shadow-sm">
+                {ANALYTICS_PERIODS.map((p) => (
+                  <button
+                    key={p.value}
+                    onClick={() => setAnalyticsPeriod(p.value)}
+                    className={`px-3 py-1.5 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md ${
+                      analyticsPeriod === p.value
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Stat cards */}
+            {loadingAnalytics ? (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Skeleton className="h-24 rounded-lg" />
+                <Skeleton className="h-24 rounded-lg" />
+                <Skeleton className="h-24 rounded-lg" />
+              </div>
+            ) : analyticsData ? (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-lg border px-5 py-4">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Activity className="size-4" />
+                    <span className="text-xs font-medium">Total Requests</span>
+                  </div>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums">
+                    {analyticsData.total_requests.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-lg border px-5 py-4">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Clock className="size-4" />
+                    <span className="text-xs font-medium">Avg Response Time</span>
+                  </div>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums">
+                    {analyticsData.avg_response_ms.toFixed(0)}
+                    <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
+                  </p>
+                </div>
+                <div className="rounded-lg border px-5 py-4">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <AlertTriangle className="size-4" />
+                    <span className="text-xs font-medium">Error Rate</span>
+                  </div>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums">
+                    {analyticsData.error_rate.toFixed(1)}
+                    <span className="ml-0.5 text-sm font-normal text-muted-foreground">%</span>
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Bar chart */}
+            <section className="overflow-hidden rounded-lg border">
+              <div className="border-b bg-muted/30 px-4 py-3">
+                <h2 className="text-sm font-semibold">Requests Over Time</h2>
+              </div>
+
+              {loadingAnalytics ? (
+                <div className="p-4">
+                  <Skeleton className="h-[200px] w-full" />
+                </div>
+              ) : analyticsData && analyticsData.buckets.length > 0 ? (
+                <div className="p-4">
+                  <div className="flex items-end gap-px" style={{ height: 200 }}>
+                    {(() => {
+                      const maxReqs = Math.max(...analyticsData.buckets.map((b) => b.requests), 1)
+                      return analyticsData.buckets.map((bucket) => {
+                        const height = (bucket.requests / maxReqs) * 100
+                        const errorHeight = bucket.requests > 0 ? (bucket.errors / maxReqs) * 100 : 0
+                        return (
+                          <div
+                            key={bucket.bucket}
+                            className="group relative flex-1"
+                            style={{ height: "100%", minWidth: 2 }}
+                          >
+                            <div
+                              className="absolute bottom-0 w-full rounded-t bg-primary/80 transition-colors group-hover:bg-primary"
+                              style={{ height: `${height}%` }}
+                            />
+                            {errorHeight > 0 && (
+                              <div
+                                className="absolute bottom-0 w-full rounded-t bg-destructive/70"
+                                style={{ height: `${errorHeight}%` }}
+                              />
+                            )}
+                            <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden -translate-x-1/2 rounded-md border bg-popover px-3 py-2 text-xs shadow-md group-hover:block">
+                              <p className="whitespace-nowrap font-medium">
+                                {formatBucketTime(bucket.bucket, analyticsPeriod)}
+                              </p>
+                              <p className="mt-1 text-muted-foreground">
+                                {bucket.requests.toLocaleString()} requests
+                              </p>
+                              {bucket.errors > 0 && (
+                                <p className="text-destructive">
+                                  {bucket.errors.toLocaleString()} errors
+                                </p>
+                              )}
+                              <p className="text-muted-foreground">
+                                {bucket.avg_ms.toFixed(0)}ms avg
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      })
+                    })()}
+                  </div>
+                  <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
+                    <span>{formatBucketTime(analyticsData.buckets[0].bucket, analyticsPeriod)}</span>
+                    {analyticsData.buckets.length > 2 && (
+                      <span>
+                        {formatBucketTime(
+                          analyticsData.buckets[Math.floor(analyticsData.buckets.length / 2)].bucket,
+                          analyticsPeriod
+                        )}
+                      </span>
+                    )}
+                    <span>
+                      {formatBucketTime(
+                        analyticsData.buckets[analyticsData.buckets.length - 1].bucket,
+                        analyticsPeriod
+                      )}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center py-12">
+                  <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                    <BarChart3 className="size-5 text-muted-foreground" />
+                  </div>
+                  <p className="mt-3 text-sm font-medium">No data yet</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Analytics will appear once your deployment receives traffic.
+                  </p>
+                </div>
+              )}
+            </section>
+          </div>
         ) : tab === "logs" ? (
           <section className="overflow-hidden rounded-lg border">
             <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
