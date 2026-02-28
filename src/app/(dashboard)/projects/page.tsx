@@ -63,24 +63,31 @@ function NewProjectDialog({
   const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null)
   const [publicUrl, setPublicUrl] = useState("")
   const [projectName, setProjectName] = useState("")
-  const [branch, setBranch] = useState("main")
+  const [branch, setBranch] = useState("")
+  const [branches, setBranches] = useState<string[]>([])
+  const [branchesLoading, setBranchesLoading] = useState(false)
+  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false)
   const [buildCommand, setBuildCommand] = useState("")
   const [installCommand, setInstallCommand] = useState("")
   const [outputDir, setOutputDir] = useState("")
   const [deploying, setDeploying] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const branchDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setRepoDropdownOpen(false)
       }
+      if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
+        setBranchDropdownOpen(false)
+      }
     }
-    if (repoDropdownOpen) {
+    if (repoDropdownOpen || branchDropdownOpen) {
       document.addEventListener("mousedown", handleClickOutside)
       return () => document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [repoDropdownOpen])
+  }, [repoDropdownOpen, branchDropdownOpen])
 
   const fetchRepos = useCallback(async () => {
     setReposLoading(true)
@@ -103,13 +110,36 @@ function NewProjectDialog({
     }
   }, [open, mode, repos.length, reposLoading, reposError, fetchRepos])
 
+  const fetchBranches = useCallback(async (repoFullName: string, defaultBranch?: string) => {
+    setBranchesLoading(true)
+    setBranches([])
+    try {
+      const res = await fetch(`/api/github/branches?repo=${encodeURIComponent(repoFullName)}`)
+      if (res.ok) {
+        const data = await res.json() as string[]
+        setBranches(data)
+        if (defaultBranch && data.includes(defaultBranch)) {
+          setBranch(defaultBranch)
+        } else if (data.length > 0) {
+          // Auto-select default branch by common names
+          const preferred = data.find((b) => b === "main") ?? data.find((b) => b === "master") ?? data[0]
+          setBranch(preferred)
+        }
+      }
+    } catch { /* ignore */ } finally {
+      setBranchesLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!open) {
       setMode("github")
       setSelectedRepo(null)
       setPublicUrl("")
       setProjectName("")
-      setBranch("main")
+      setBranch("")
+      setBranches([])
+      setBranchDropdownOpen(false)
       setBuildCommand("")
       setInstallCommand("")
       setOutputDir("")
@@ -126,15 +156,16 @@ function NewProjectDialog({
     setRepoSearch("")
     setProjectName(repo.name)
     setBranch(repo.defaultBranch)
+    fetchBranches(repo.fullName, repo.defaultBranch)
   }
 
   function parsePublicUrl(url: string) {
     setPublicUrl(url)
     const match = url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/)?$/)
     if (match) {
-      const repoName = match[2]
-      setProjectName(repoName)
-      setBranch("main")
+      const repoFullName = `${match[1]}/${match[2]}`
+      setProjectName(match[2])
+      fetchBranches(repoFullName)
     }
   }
 
@@ -301,7 +332,41 @@ function NewProjectDialog({
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Branch</label>
-            <Input value={branch} onChange={(e) => setBranch(e.target.value)} />
+            <div className="relative" ref={branchDropdownRef}>
+              <button
+                type="button"
+                onClick={() => branches.length > 0 && setBranchDropdownOpen(!branchDropdownOpen)}
+                className="flex h-9 w-full items-center justify-between rounded-md border px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+              >
+                <span className="flex items-center gap-2">
+                  {branchesLoading && <Loader2 className="size-3 animate-spin" />}
+                  <GitBranch className="size-3 text-muted-foreground" />
+                  <span className={branch ? "text-foreground" : "text-muted-foreground"}>
+                    {branchesLoading ? "Loading..." : branch || "Select branch..."}
+                  </span>
+                </span>
+                <ChevronDown className="size-3.5 text-muted-foreground" />
+              </button>
+
+              {branchDropdownOpen && branches.length > 0 && (
+                <div className="absolute top-[calc(100%+4px)] left-0 z-50 w-full rounded-md border bg-popover shadow-md">
+                  <div className="max-h-48 overflow-y-auto">
+                    {branches.map((b) => (
+                      <button
+                        key={b}
+                        onClick={() => { setBranch(b); setBranchDropdownOpen(false) }}
+                        className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors hover:bg-accent ${
+                          b === branch ? "bg-accent/50 font-medium" : ""
+                        }`}
+                      >
+                        <GitBranch className="size-3 text-muted-foreground" />
+                        {b}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <details className="group">
