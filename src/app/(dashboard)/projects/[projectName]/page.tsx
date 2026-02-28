@@ -89,7 +89,7 @@ type Domain = {
   sslStatus: "pending" | "provisioning" | "active" | "failed"
 }
 
-type Tab = "overview" | "domains" | "settings"
+type Tab = "overview" | "logs" | "domains" | "settings"
 
 function statusBadgeClasses(status: string): string {
   switch (status) {
@@ -927,7 +927,7 @@ export default function ProjectDetailPage() {
       {/* Tabs */}
       <div className="-mx-4 border-b px-4 sm:-mx-6 sm:px-6">
         <nav className="flex gap-6">
-          {(["overview", "domains", "settings"] as const).map((t) => (
+          {(["overview", "logs", "domains", "settings"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -947,6 +947,54 @@ export default function ProjectDetailPage() {
       <div className="pt-6">
         {tab === "domains" ? (
           <DomainsTab project={project} />
+        ) : tab === "logs" ? (
+          <section className="overflow-hidden rounded-lg border">
+            <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <TerminalSquare className="size-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold">Build Logs</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                {latestDeploymentIsActive && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+                {latestDeployment && (
+                  <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                    {latestDeployment.commit_sha.slice(0, 7)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="max-h-[600px] overflow-auto bg-[#1a1625] p-4">
+              {logs.length === 0 ? (
+                <p className="py-8 text-center text-sm text-[#6e6588]">No build logs available.</p>
+              ) : (
+                <div className="space-y-0.5 font-mono text-[13px] leading-6">
+                  {logs.map((log, i) => (
+                    <div key={log.id} className="flex">
+                      <span className="mr-4 select-none text-right text-[#3d3555]" style={{ minWidth: "2.5ch" }}>
+                        {i + 1}
+                      </span>
+                      <span className="mr-3 shrink-0 text-[#5a4f72]">
+                        {new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                      </span>
+                      <span
+                        className={
+                          log.level === "error"
+                            ? "text-red-400"
+                            : log.level === "warn"
+                              ? "text-amber-400"
+                              : "text-[#d4cfde]"
+                        }
+                      >
+                        {log.message}
+                      </span>
+                    </div>
+                  ))}
+                  <div ref={logsEndRef} />
+                </div>
+              )}
+            </div>
+          </section>
         ) : tab === "overview" ? (
           <div className="space-y-6">
             {/* Deployments */}
@@ -989,51 +1037,6 @@ export default function ProjectDetailPage() {
               )}
             </section>
 
-            {/* Build Logs */}
-            <section className="overflow-hidden rounded-lg border">
-              <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <TerminalSquare className="size-4 text-muted-foreground" />
-                  <h2 className="text-sm font-semibold">Build Logs</h2>
-                </div>
-                {latestDeployment && (
-                  <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                    {latestDeployment.commit_sha.slice(0, 7)}
-                  </span>
-                )}
-              </div>
-
-              <div className="max-h-[400px] overflow-auto bg-[#1a1625] p-4">
-                {logs.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-[#6e6588]">No build logs available.</p>
-                ) : (
-                  <div className="space-y-0.5 font-mono text-[13px] leading-6">
-                    {logs.map((log, i) => (
-                      <div key={log.id} className="flex">
-                        <span className="mr-4 select-none text-right text-[#3d3555]" style={{ minWidth: "2.5ch" }}>
-                          {i + 1}
-                        </span>
-                        <span className="mr-3 shrink-0 text-[#5a4f72]">
-                          {new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                        </span>
-                        <span
-                          className={
-                            log.level === "error"
-                              ? "text-red-400"
-                              : log.level === "warn"
-                                ? "text-amber-400"
-                                : "text-[#d4cfde]"
-                          }
-                        >
-                          {log.message}
-                        </span>
-                      </div>
-                    ))}
-                    <div ref={logsEndRef} />
-                  </div>
-                )}
-              </div>
-            </section>
           </div>
         ) : (
           <SettingsTab
