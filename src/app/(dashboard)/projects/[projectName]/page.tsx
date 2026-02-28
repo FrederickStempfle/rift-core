@@ -10,11 +10,15 @@ import {
   Clock,
   Copy,
   ExternalLink,
+  Eye,
+  EyeOff,
   GitBranch,
   GitCommit,
   Globe,
+  Key,
   Loader2,
   MoreVertical,
+  Plus,
   Rocket,
   Settings,
   TerminalSquare,
@@ -121,7 +125,14 @@ function formatBucketTime(iso: string, period: string): string {
   return d.toLocaleDateString([], { month: "short", day: "numeric" })
 }
 
-type Tab = "overview" | "analytics" | "logs" | "domains" | "settings"
+type EnvVar = {
+  id: string
+  project_id: string
+  key: string
+  preview: string
+}
+
+type Tab = "overview" | "analytics" | "env" | "logs" | "domains" | "settings"
 
 function statusBadgeClasses(status: string): string {
   switch (status) {
@@ -742,6 +753,13 @@ export default function ProjectDetailPage() {
   const [analyticsPeriod, setAnalyticsPeriod] = useState("24h")
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
   const [loadingAnalytics, setLoadingAnalytics] = useState(false)
+  const [envVars, setEnvVars] = useState<EnvVar[]>([])
+  const [loadingEnvVars, setLoadingEnvVars] = useState(false)
+  const [addEnvOpen, setAddEnvOpen] = useState(false)
+  const [newEnvKey, setNewEnvKey] = useState("")
+  const [newEnvValue, setNewEnvValue] = useState("")
+  const [showEnvValue, setShowEnvValue] = useState(false)
+  const [savingEnv, setSavingEnv] = useState(false)
   const previousDeploymentStatus = useRef<string | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
 
@@ -829,6 +847,68 @@ export default function ProjectDetailPage() {
       .catch(() => {})
       .finally(() => setLoadingAnalytics(false))
   }, [tab, project?.id, analyticsPeriod])
+
+  // Fetch env vars when tab is active
+  const loadEnvVars = useCallback(async (projectId: string) => {
+    setLoadingEnvVars(true)
+    try {
+      const res = await fetch(`/api/env-vars?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" })
+      if (res.ok) {
+        const data = await res.json()
+        setEnvVars(data as EnvVar[])
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingEnvVars(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab !== "env" || !project?.id) return
+    void loadEnvVars(project.id)
+  }, [tab, project?.id, loadEnvVars])
+
+  async function handleAddEnvVar() {
+    if (!project || !newEnvKey.trim()) return
+    setSavingEnv(true)
+    try {
+      const res = await fetch("/api/env-vars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, key: newEnvKey.trim(), value: newEnvValue }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "Failed to add variable")
+      toast.success(`Variable "${newEnvKey.trim()}" saved`)
+      setNewEnvKey("")
+      setNewEnvValue("")
+      setShowEnvValue(false)
+      setAddEnvOpen(false)
+      void loadEnvVars(project.id)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add variable")
+    } finally {
+      setSavingEnv(false)
+    }
+  }
+
+  async function handleDeleteEnvVar(envVar: EnvVar) {
+    if (!project) return
+    try {
+      const res = await fetch(`/api/env-vars?id=${encodeURIComponent(envVar.id)}&projectId=${encodeURIComponent(project.id)}`, {
+        method: "DELETE",
+      })
+      if (!res.ok && res.status !== 204) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to delete variable")
+      }
+      toast.success(`Variable "${envVar.key}" deleted`)
+      void loadEnvVars(project.id)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete variable")
+    }
+  }
 
   async function handleDeploy() {
     if (!project) return
@@ -973,17 +1053,17 @@ export default function ProjectDetailPage() {
       {/* Tabs */}
       <div className="-mx-4 border-b px-4 sm:-mx-6 sm:px-6">
         <nav className="flex gap-6">
-          {(["overview", "analytics", "logs", "domains", "settings"] as const).map((t) => (
+          {(["overview", "analytics", "env", "logs", "domains", "settings"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`relative pb-3 text-sm font-medium capitalize transition-colors ${
+              className={`relative pb-3 text-sm font-medium transition-colors ${
                 tab === t
                   ? "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {t}
+              {t === "env" ? "Environment" : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </nav>
@@ -1144,6 +1224,115 @@ export default function ProjectDetailPage() {
                 </div>
               )}
             </section>
+          </div>
+        ) : tab === "env" ? (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Key className="size-4" />
+                <span className="text-sm font-medium">Environment Variables</span>
+              </div>
+              <Button size="sm" onClick={() => setAddEnvOpen(true)}>
+                <Plus className="size-3.5" />
+                Add Variable
+              </Button>
+            </div>
+
+            <section className="overflow-hidden rounded-lg border">
+              {loadingEnvVars ? (
+                <div className="space-y-0">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-4 border-b px-4 py-3 last:border-b-0">
+                      <Skeleton className="h-5 w-32" />
+                      <Skeleton className="h-5 w-48" />
+                    </div>
+                  ))}
+                </div>
+              ) : envVars.length === 0 ? (
+                <div className="flex flex-col items-center py-12">
+                  <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                    <Key className="size-5 text-muted-foreground" />
+                  </div>
+                  <p className="mt-3 text-sm font-medium">No environment variables</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Add variables like API keys and secrets for your deployments.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {envVars.map((v) => (
+                    <div key={v.id} className="flex items-center justify-between px-4 py-3">
+                      <div className="flex items-center gap-4 min-w-0">
+                        <code className="shrink-0 rounded bg-muted px-2 py-0.5 text-xs font-medium">
+                          {v.key}
+                        </code>
+                        <span className="truncate font-mono text-xs text-muted-foreground">
+                          {v.preview}
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="size-8 shrink-0 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => void handleDeleteEnvVar(v)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <Dialog open={addEnvOpen} onOpenChange={(open) => { setAddEnvOpen(open); if (!open) { setNewEnvKey(""); setNewEnvValue(""); setShowEnvValue(false) } }}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Add Environment Variable</DialogTitle>
+                  <DialogDescription>
+                    Variables are encrypted at rest and injected into your deployments.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Key</label>
+                    <Input
+                      placeholder="e.g. OPENROUTER_API_KEY"
+                      value={newEnvKey}
+                      onChange={(e) => setNewEnvKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Value</label>
+                    <div className="relative">
+                      <Input
+                        type={showEnvValue ? "text" : "password"}
+                        placeholder="Enter value"
+                        value={newEnvValue}
+                        onChange={(e) => setNewEnvValue(e.target.value)}
+                        className="pr-10 font-mono text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowEnvValue(!showEnvValue)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showEnvValue ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="outline" size="sm" onClick={() => setAddEnvOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={() => void handleAddEnvVar()} disabled={savingEnv || !newEnvKey.trim()}>
+                      {savingEnv ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         ) : tab === "logs" ? (
           <section className="overflow-hidden rounded-lg border">
