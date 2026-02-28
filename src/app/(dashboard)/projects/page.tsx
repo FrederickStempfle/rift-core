@@ -110,20 +110,20 @@ function NewProjectDialog({
     }
   }, [open, mode, repos.length, reposLoading, reposError, fetchRepos])
 
-  const fetchBranches = useCallback(async (repoFullName: string, defaultBranch?: string) => {
+  const fetchBranches = useCallback(async (repoFullName: string, knownDefault?: string) => {
     setBranchesLoading(true)
     setBranches([])
     try {
       const res = await fetch(`/api/github/branches?repo=${encodeURIComponent(repoFullName)}`)
       if (res.ok) {
-        const data = await res.json() as string[]
-        setBranches(data)
-        if (defaultBranch && data.includes(defaultBranch)) {
-          setBranch(defaultBranch)
-        } else if (data.length > 0) {
-          // Auto-select default branch by common names
-          const preferred = data.find((b) => b === "main") ?? data.find((b) => b === "master") ?? data[0]
-          setBranch(preferred)
+        const data = await res.json() as { branches: string[]; defaultBranch: string | null }
+        setBranches(data.branches)
+        // Use known default, then API default, then first branch
+        const defaultName = knownDefault ?? data.defaultBranch
+        if (defaultName && data.branches.includes(defaultName)) {
+          setBranch(defaultName)
+        } else if (data.branches.length > 0) {
+          setBranch(data.branches[0])
         }
       }
     } catch { /* ignore */ } finally {

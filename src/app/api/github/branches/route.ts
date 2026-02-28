@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 
+async function fetchGitHub(url: string, token?: string) {
+  const headers: Record<string, string> = { Accept: "application/vnd.github.v3+json" }
+  if (token) headers.Authorization = `Bearer ${token}`
+  return fetch(url, { headers })
+}
+
 export async function GET(request: Request) {
   const session = await auth()
   if (!session?.accessToken) {
@@ -14,36 +20,41 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "repo parameter required" }, { status: 400 })
   }
 
-  try {
-    const res = await fetch(
-      `https://api.github.com/repos/${encodeURIComponent(repo.split("/")[0])}/${encodeURIComponent(repo.split("/")[1])}/branches?per_page=100`,
-      {
-        headers: {
-          Authorization: `Bearer ${session.accessToken}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      }
-    )
+  const [owner, name] = repo.split("/")
+  const ownerEnc = encodeURIComponent(owner)
+  const nameEnc = encodeURIComponent(name)
 
-    if (!res.ok) {
+  try {
+    // Fetch branches and repo info (for default branch) in parallel
+    const [branchesRes, repoRes] = await Promise.all([
+      fetchGitHub(`https://api.github.com/repos/${ownerEnc}/${nameEnc}/branches?per_page=100`, session.accessToken),
+      fetchGitHub(`https://api.github.com/repos/${ownerEnc}/${nameEnc}`, session.accessToken),
+    ])
+
+    let branches: string[]
+    let defaultBranch: string | null = null
+
+    if (!branchesRes.ok) {
       // Fall back to unauthenticated for public repos
-      const publicRes = await fetch(
-        `https://api.github.com/repos/${encodeURIComponent(repo.split("/")[0])}/${encodeURIComponent(repo.split("/")[1])}/branches?per_page=100`,
-        { headers: { Accept: "application/vnd.github.v3+json" } }
-      )
-      if (!publicRes.ok) {
-        return NextResponse.json({ error: "Failed to fetch branches" }, { status: publicRes.status })
+      const [pubBranches, pubRepo] = await Promise.all([
+        fetchGitHub(`https://api.github.com/repos/${ownerEnc}/${nameEnc}/branches?per_page=100`),
+        fetchGitHub(`https://api.github.com/repos/${ownerEnc}/${nameEnc}`),
+      ])
+      if (!pubBranches.ok) {
+        return NextResponse.json({ error: "Failed to fetch branches" }, { status: pubBranches.status })
       }
-      const branches = await publicRes.json()
-      return NextResponse.json(
-        branches.map((b: { name: string }) => b.name)
-      )
+      branches = (await pubBranches.json()).map((b: { name: string }) => b.name)
+      if (pubRepo.ok) {
+        defaultBranch = (await pubRepo.json()).default_branch ?? null
+      }
+    } else {
+      branches = (await branchesRes.json()).map((b: { name: string }) => b.name)
+      if (repoRes.ok) {
+        defaultBranch = (await repoRes.json()).default_branch ?? null
+      }
     }
 
-    const branches = await res.json()
-    return NextResponse.json(
-      branches.map((b: { name: string }) => b.name)
-    )
+    return NextResponse.json({ branches, defaultBranch })
   } catch {
     return NextResponse.json({ error: "Failed to fetch branches" }, { status: 500 })
   }
