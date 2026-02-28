@@ -39,7 +39,6 @@ export const navigationGroups: NavGroup[] = [
         url: "/projects",
         subItems: [
           { title: "All Projects", url: "/projects" },
-          { title: "New Project", url: "/projects/new" },
         ],
       },
       {

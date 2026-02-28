@@ -1,23 +1,46 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
 import Image from "next/image"
+import { signOut } from "next-auth/react"
 
 export default function LogoutPage() {
-  const router = useRouter()
   const [stage, setStage] = React.useState<"signing-out" | "done" | "fade">("signing-out")
 
   React.useEffect(() => {
-    const t1 = setTimeout(() => setStage("done"), 2000)
-    const t2 = setTimeout(() => setStage("fade"), 3200)
-    const t3 = setTimeout(() => router.replace("/auth"), 4000)
-    return () => {
-      clearTimeout(t1)
-      clearTimeout(t2)
-      clearTimeout(t3)
+    let cancelled = false
+    let doneTimeout: ReturnType<typeof setTimeout> | null = null
+    let redirectTimeout: ReturnType<typeof setTimeout> | null = null
+
+    const hardRedirect = (url: string) => {
+      if (cancelled) return
+      window.location.replace(url)
     }
-  }, [router])
+
+    void signOut({ redirect: false, redirectTo: "/auth" })
+      .then((result) => {
+        if (cancelled) return
+        setStage("done")
+        doneTimeout = setTimeout(() => {
+          if (cancelled) return
+          setStage("fade")
+          redirectTimeout = setTimeout(() => {
+            hardRedirect(result.url || "/auth")
+          }, 800)
+        }, 1200)
+      })
+      .catch(() => {
+        void fetch("/api/logout", { method: "POST" }).finally(() => {
+          hardRedirect("/auth")
+        })
+      })
+
+    return () => {
+      cancelled = true
+      if (doneTimeout) clearTimeout(doneTimeout)
+      if (redirectTimeout) clearTimeout(redirectTimeout)
+    }
+  }, [])
 
   return (
     <div

@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import {
   BadgeCheck,
   ChevronDown,
@@ -7,6 +8,7 @@ import {
   LogOut,
   Rocket,
 } from "lucide-react"
+import { signOut, useSession } from "next-auth/react"
 
 import {
   Sidebar,
@@ -38,17 +40,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Skeleton } from "@/components/ui/skeleton"
 import { usePathname } from "next/navigation"
 import { navigationGroups, type NavItem } from "@/lib/navigation"
+import { useSidebarState } from "@/hooks/use-sidebar-state"
 
 function NavGroup({
   items,
   label,
   defaultOpen = false,
+  getGroupOpen,
+  setGroupOpen,
 }: {
   items: NavItem[]
   label: string
   defaultOpen?: boolean
+  getGroupOpen: (title: string, fallback: boolean) => boolean
+  setGroupOpen: (title: string, open: boolean) => void
 }) {
   const pathname = usePathname()
 
@@ -59,11 +67,13 @@ function NavGroup({
         <SidebarMenu>
           {items.map((item) => {
             const isGroupActive = pathname.startsWith(item.url)
+            const isOpen = getGroupOpen(item.title, defaultOpen)
 
             return (
               <Collapsible
                 key={item.title}
-                defaultOpen={defaultOpen}
+                open={isOpen}
+                onOpenChange={(open) => setGroupOpen(item.title, open)}
                 className="group/collapsible"
               >
                 <SidebarMenuItem>
@@ -98,6 +108,58 @@ function NavGroup({
 }
 
 export function AppSidebar() {
+  const { data: session, status } = useSession()
+  const user = session?.user
+  const userName = user?.name || user?.login || "User"
+  const userEmail = user?.email || ""
+  const userAvatar = user?.image || ""
+  const userInitials = userName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2)
+
+  const { getGroupOpen, setGroupOpen, scrollTop, setScrollTop } = useSidebarState()
+  const contentRef = React.useRef<HTMLDivElement>(null)
+
+  // Restore scroll position before paint — read localStorage directly
+  // since the hook's state update hasn't flushed yet during the same layout pass
+  React.useLayoutEffect(() => {
+    if (contentRef.current) {
+      try {
+        const raw = localStorage.getItem("sidebar_ui_state")
+        if (raw) {
+          const saved = JSON.parse(raw) as { scrollTop?: number }
+          if (saved.scrollTop && saved.scrollTop > 0) {
+            contentRef.current.scrollTop = saved.scrollTop
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [])
+
+  const handleScroll = React.useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      setScrollTop(e.currentTarget.scrollTop)
+    },
+    [setScrollTop]
+  )
+
+  const handleLogout = React.useCallback(() => {
+    void signOut({ redirect: false, redirectTo: "/auth" })
+      .then((result) => {
+        window.location.replace(result.url || "/auth")
+      })
+      .catch(() => {
+        void fetch("/api/logout", { method: "POST" }).finally(() => {
+          window.location.replace("/auth")
+        })
+      })
+  }, [])
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="h-12 justify-center p-0 px-2">
@@ -116,29 +178,40 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent ref={contentRef} onScroll={handleScroll}>
         {navigationGroups.map((group) => (
           <NavGroup
             key={group.label}
             items={group.items}
             label={group.label}
             defaultOpen={group.defaultOpen}
+            getGroupOpen={getGroupOpen}
+            setGroupOpen={setGroupOpen}
           />
         ))}
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
+            {status === "loading" ? (
+              <SidebarMenuButton size="lg" className="group-data-[collapsible=icon]:!p-0 pointer-events-none">
+                <Skeleton className="size-8 shrink-0 rounded-lg" />
+                <div className="flex flex-col gap-1.5 group-data-[collapsible=icon]:hidden">
+                  <Skeleton className="h-3.5 w-24" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              </SidebarMenuButton>
+            ) : (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton size="lg" className="group-data-[collapsible=icon]:!p-0">
                   <Avatar className="size-8 shrink-0 rounded-lg">
-                    <AvatarImage src="https://github.com/shadcn.png" alt="shadcn" />
-                    <AvatarFallback className="rounded-lg">SC</AvatarFallback>
+                    <AvatarImage src={userAvatar} alt={userName} />
+                    <AvatarFallback className="rounded-lg">{userInitials}</AvatarFallback>
                   </Avatar>
                   <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
-                    <span className="text-sm font-semibold">shadcn</span>
-                    <span className="text-xs text-muted-foreground">m@example.com</span>
+                    <span className="text-sm font-semibold">{userName}</span>
+                    <span className="text-xs text-muted-foreground">{userEmail}</span>
                   </div>
                   <ChevronUp className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
                 </SidebarMenuButton>
@@ -151,12 +224,12 @@ export function AppSidebar() {
                 <DropdownMenuLabel className="p-0 font-normal">
                   <div className="flex items-center gap-2 px-1 py-1.5">
                     <Avatar className="size-8 rounded-lg">
-                      <AvatarImage src="https://github.com/shadcn.png" alt="shadcn" />
-                      <AvatarFallback className="rounded-lg">SC</AvatarFallback>
+                      <AvatarImage src={userAvatar} alt={userName} />
+                      <AvatarFallback className="rounded-lg">{userInitials}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col gap-0.5 leading-none">
-                      <span className="text-sm font-semibold">shadcn</span>
-                      <span className="text-xs text-muted-foreground">m@example.com</span>
+                      <span className="text-sm font-semibold">{userName}</span>
+                      <span className="text-xs text-muted-foreground">{userEmail}</span>
                     </div>
                   </div>
                 </DropdownMenuLabel>
@@ -168,14 +241,18 @@ export function AppSidebar() {
                   </a>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <a href="/logout">
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    handleLogout()
+                  }}
+                >
                     <LogOut className="mr-2 size-4" />
                     Log out
-                  </a>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

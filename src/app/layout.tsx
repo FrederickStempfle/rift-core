@@ -4,6 +4,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { CookieConsent } from "@/components/cookie-consent";
 import { Toaster } from "@/components/ui/sonner";
+import { SessionProvider } from "next-auth/react";
 
 const satoshi = localFont({
   src: [
@@ -36,7 +37,9 @@ export default function RootLayout({
       <body
         className={`${satoshi.variable} ${jetbrainsMono.variable} antialiased`}
       >
-        {children}
+        <SessionProvider>
+          {children}
+        </SessionProvider>
         <CookieConsent />
         <Toaster />
       </body>

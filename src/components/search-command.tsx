@@ -68,10 +68,6 @@ export function SearchCommand() {
               <FolderGit2 />
               Projects
             </CommandItem>
-            <CommandItem onSelect={() => navigate("/projects/new")}>
-              <FolderGit2 />
-              New Project
-            </CommandItem>
             <CommandItem onSelect={() => navigate("/deployments")}>
               <Rocket />
               Deployments
