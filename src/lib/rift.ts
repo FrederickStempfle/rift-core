@@ -89,6 +89,7 @@ async function exchangeGitHubSession(): Promise<string> {
       login: session.user.login ?? session.user.name ?? session.user.email?.split("@")[0] ?? "github-user",
       name: session.user.name ?? null,
       avatar_url: session.user.image ?? null,
+      github_token: session.accessToken ?? null,
     }),
     cache: "no-store",
   })
