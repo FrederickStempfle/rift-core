@@ -6,6 +6,7 @@ import {
   Rocket,
   ScrollText,
   Settings,
+  Shield,
   Terminal,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -62,6 +63,14 @@ export const navigationGroups: NavGroup[] = [
         subItems: [
           { title: "All Domains", url: "/domains" },
           { title: "SSL Certificates", url: "/domains/ssl" },
+        ],
+      },
+      {
+        title: "Firewall",
+        icon: Shield,
+        url: "/firewall",
+        subItems: [
+          { title: "Rules", url: "/firewall" },
         ],
       },
       {
