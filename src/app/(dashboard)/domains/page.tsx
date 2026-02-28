@@ -137,8 +137,7 @@ function AddDomainDialog({
         ) : (
           <div className="px-6 space-y-4 pb-6">
             <div className="space-y-3">
-              <DnsRecordRow type="A" name="@" value={serverIp ?? "…"} />
-              <DnsRecordRow type="A" name="*" value={serverIp ?? "…"} />
+              <DnsRecordRow type="A" name={getDnsName(createdDomain ?? "")} value={serverIp ?? "…"} />
             </div>
 
             <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
