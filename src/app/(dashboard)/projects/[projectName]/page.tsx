@@ -20,14 +20,23 @@ import {
   MoreVertical,
   Plus,
   Rocket,
+  Route,
   Settings,
   TerminalSquare,
   Trash2,
+  Zap,
 } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart"
 import {
   Dialog,
   DialogContent,
@@ -43,6 +52,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+} from "recharts"
 
 const ACTIVE_DEPLOYMENT_STATUSES = new Set(["queued", "cloning", "building", "deploying"])
 
@@ -101,15 +121,48 @@ type AnalyticsBucket = {
   requests: number
   errors: number
   avg_ms: number
+  cold_starts: number
+}
+
+type ReferrerEntry = {
+  referrer: string
+  requests: number
+}
+
+type PathEntry = {
+  path: string
+  requests: number
+  errors: number
+  avg_ms: number
 }
 
 type AnalyticsData = {
   buckets: AnalyticsBucket[]
   total_requests: number
   total_errors: number
+  total_cold_starts: number
   avg_response_ms: number
   error_rate: number
+  top_referrers: ReferrerEntry[]
+  top_paths: PathEntry[]
 }
+
+const analyticsRequestsConfig = {
+  requests: { label: "Requests", color: "var(--chart-1)" },
+  errors: { label: "Errors", color: "var(--color-destructive)" },
+} satisfies ChartConfig
+
+const analyticsResponseConfig = {
+  avg_ms: { label: "Avg Response (ms)", color: "var(--chart-2)" },
+} satisfies ChartConfig
+
+const analyticsReferrerConfig = {
+  requests: { label: "Requests", color: "var(--chart-1)" },
+} satisfies ChartConfig
+
+const analyticsPathConfig = {
+  requests: { label: "Requests", color: "var(--chart-3)" },
+} satisfies ChartConfig
 
 const ANALYTICS_PERIODS = [
   { label: "24h", value: "24h" },
@@ -350,6 +403,313 @@ function DeploymentRow({ deployment, isLatest }: { deployment: Deployment; isLat
           {statusLabel[deployment.status] ?? deployment.status}
         </span>
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Analytics Tab
+// ---------------------------------------------------------------------------
+
+function AnalyticsTab({
+  analyticsData,
+  loadingAnalytics,
+  analyticsPeriod,
+  setAnalyticsPeriod,
+  formatBucketTime,
+}: {
+  analyticsData: AnalyticsData | null
+  loadingAnalytics: boolean
+  analyticsPeriod: string
+  setAnalyticsPeriod: (v: string) => void
+  formatBucketTime: (iso: string, period: string) => string
+}) {
+  const chartData =
+    analyticsData?.buckets.map((b) => ({
+      time: formatBucketTime(b.bucket, analyticsPeriod),
+      requests: b.requests,
+      errors: b.errors,
+      avg_ms: Math.round(b.avg_ms * 100) / 100,
+      cold_starts: b.cold_starts,
+    })) ?? []
+
+  const referrerData =
+    analyticsData?.top_referrers?.map((r) => ({
+      referrer: r.referrer,
+      requests: r.requests,
+    })) ?? []
+
+  const pathData =
+    analyticsData?.top_paths?.map((p) => ({
+      path: p.path,
+      requests: p.requests,
+    })) ?? []
+
+  return (
+    <div className="space-y-6">
+      {/* Period selector */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <BarChart3 className="size-4" />
+          <span className="text-sm font-medium">Request Metrics</span>
+        </div>
+        <div className="flex rounded-md border shadow-sm">
+          {ANALYTICS_PERIODS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => setAnalyticsPeriod(p.value)}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md ${
+                analyticsPeriod === p.value
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Stat cards */}
+      {loadingAnalytics ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-lg" />
+          ))}
+        </div>
+      ) : analyticsData ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Activity className="size-4" />
+                <span className="text-xs font-medium">Total Requests</span>
+              </div>
+              <p className="mt-2 text-2xl font-semibold tabular-nums">
+                {analyticsData.total_requests.toLocaleString()}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Clock className="size-4" />
+                <span className="text-xs font-medium">Avg Response Time</span>
+              </div>
+              <p className="mt-2 text-2xl font-semibold tabular-nums">
+                {analyticsData.avg_response_ms.toFixed(0)}
+                <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <AlertTriangle className="size-4" />
+                <span className="text-xs font-medium">Error Rate</span>
+              </div>
+              <p className="mt-2 text-2xl font-semibold tabular-nums">
+                {analyticsData.error_rate.toFixed(1)}
+                <span className="ml-0.5 text-sm font-normal text-muted-foreground">%</span>
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Zap className="size-4" />
+                <span className="text-xs font-medium">Cold Starts</span>
+              </div>
+              <p className="mt-2 text-2xl font-semibold tabular-nums">
+                {(analyticsData.total_cold_starts ?? 0).toLocaleString()}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {/* Requests Over Time — Area Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+            <BarChart3 className="size-4 text-muted-foreground" />
+            Requests Over Time
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loadingAnalytics ? (
+            <Skeleton className="h-[240px] w-full" />
+          ) : chartData.length > 0 ? (
+            <ChartContainer config={analyticsRequestsConfig} className="h-[240px] w-full">
+              <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  className="text-muted-foreground"
+                />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  className="text-muted-foreground"
+                  width={48}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <defs>
+                  <linearGradient id="projFillRequests" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="projFillErrors" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-destructive)" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="var(--color-destructive)" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <Area
+                  type="monotone"
+                  dataKey="requests"
+                  stroke="var(--chart-1)"
+                  fill="url(#projFillRequests)"
+                  strokeWidth={2}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="errors"
+                  stroke="var(--color-destructive)"
+                  fill="url(#projFillErrors)"
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ChartContainer>
+          ) : (
+            <div className="flex flex-col items-center py-12">
+              <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                <BarChart3 className="size-5 text-muted-foreground" />
+              </div>
+              <p className="mt-3 text-sm font-medium">No data yet</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Analytics will appear once your deployment receives traffic.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Response Time Trend — Line Chart */}
+      {chartData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <Clock className="size-4 text-muted-foreground" />
+              Response Time Trend
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={analyticsResponseConfig} className="h-[200px] w-full">
+              <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  className="text-muted-foreground"
+                />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  className="text-muted-foreground"
+                  width={48}
+                  unit="ms"
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Line
+                  type="monotone"
+                  dataKey="avg_ms"
+                  stroke="var(--chart-2)"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+              </LineChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Traffic Sources + Top Pages */}
+      {(referrerData.length > 0 || pathData.length > 0) && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {referrerData.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <Globe className="size-4 text-muted-foreground" />
+                  Top Traffic Sources
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer config={analyticsReferrerConfig} className="h-[250px] w-full">
+                  <BarChart
+                    data={referrerData}
+                    layout="vertical"
+                    margin={{ top: 0, right: 16, bottom: 0, left: 0 }}
+                  >
+                    <CartesianGrid horizontal={false} strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <YAxis
+                      dataKey="referrer"
+                      type="category"
+                      tick={{ fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={100}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="requests" fill="var(--chart-1)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+          )}
+          {pathData.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <Route className="size-4 text-muted-foreground" />
+                  Top Pages
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer config={analyticsPathConfig} className="h-[250px] w-full">
+                  <BarChart
+                    data={pathData}
+                    layout="vertical"
+                    margin={{ top: 0, right: 16, bottom: 0, left: 0 }}
+                  >
+                    <CartesianGrid horizontal={false} strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <YAxis
+                      dataKey="path"
+                      type="category"
+                      tick={{ fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={100}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="requests" fill="var(--chart-3)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -1074,157 +1434,13 @@ export default function ProjectDetailPage() {
         {tab === "domains" ? (
           <DomainsTab project={project} />
         ) : tab === "analytics" ? (
-          <div className="space-y-6">
-            {/* Period selector */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <BarChart3 className="size-4" />
-                <span className="text-sm font-medium">Request Metrics</span>
-              </div>
-              <div className="flex rounded-md border shadow-sm">
-                {ANALYTICS_PERIODS.map((p) => (
-                  <button
-                    key={p.value}
-                    onClick={() => setAnalyticsPeriod(p.value)}
-                    className={`px-3 py-1.5 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md ${
-                      analyticsPeriod === p.value
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-background text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Stat cards */}
-            {loadingAnalytics ? (
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Skeleton className="h-24 rounded-lg" />
-                <Skeleton className="h-24 rounded-lg" />
-                <Skeleton className="h-24 rounded-lg" />
-              </div>
-            ) : analyticsData ? (
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-lg border px-5 py-4">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Activity className="size-4" />
-                    <span className="text-xs font-medium">Total Requests</span>
-                  </div>
-                  <p className="mt-2 text-2xl font-semibold tabular-nums">
-                    {analyticsData.total_requests.toLocaleString()}
-                  </p>
-                </div>
-                <div className="rounded-lg border px-5 py-4">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Clock className="size-4" />
-                    <span className="text-xs font-medium">Avg Response Time</span>
-                  </div>
-                  <p className="mt-2 text-2xl font-semibold tabular-nums">
-                    {analyticsData.avg_response_ms.toFixed(0)}
-                    <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
-                  </p>
-                </div>
-                <div className="rounded-lg border px-5 py-4">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <AlertTriangle className="size-4" />
-                    <span className="text-xs font-medium">Error Rate</span>
-                  </div>
-                  <p className="mt-2 text-2xl font-semibold tabular-nums">
-                    {analyticsData.error_rate.toFixed(1)}
-                    <span className="ml-0.5 text-sm font-normal text-muted-foreground">%</span>
-                  </p>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Bar chart */}
-            <section className="overflow-hidden rounded-lg border">
-              <div className="border-b bg-muted/30 px-4 py-3">
-                <h2 className="text-sm font-semibold">Requests Over Time</h2>
-              </div>
-
-              {loadingAnalytics ? (
-                <div className="p-4">
-                  <Skeleton className="h-[200px] w-full" />
-                </div>
-              ) : analyticsData && analyticsData.buckets.length > 0 ? (
-                <div className="p-4">
-                  <div className="flex items-end gap-px" style={{ height: 200 }}>
-                    {(() => {
-                      const maxReqs = Math.max(...analyticsData.buckets.map((b) => b.requests), 1)
-                      return analyticsData.buckets.map((bucket) => {
-                        const height = (bucket.requests / maxReqs) * 100
-                        const errorHeight = bucket.requests > 0 ? (bucket.errors / maxReqs) * 100 : 0
-                        return (
-                          <div
-                            key={bucket.bucket}
-                            className="group relative flex-1"
-                            style={{ height: "100%", minWidth: 2 }}
-                          >
-                            <div
-                              className="absolute bottom-0 w-full rounded-t bg-primary/80 transition-colors group-hover:bg-primary"
-                              style={{ height: `${height}%` }}
-                            />
-                            {errorHeight > 0 && (
-                              <div
-                                className="absolute bottom-0 w-full rounded-t bg-destructive/70"
-                                style={{ height: `${errorHeight}%` }}
-                              />
-                            )}
-                            <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden -translate-x-1/2 rounded-md border bg-popover px-3 py-2 text-xs shadow-md group-hover:block">
-                              <p className="whitespace-nowrap font-medium">
-                                {formatBucketTime(bucket.bucket, analyticsPeriod)}
-                              </p>
-                              <p className="mt-1 text-muted-foreground">
-                                {bucket.requests.toLocaleString()} requests
-                              </p>
-                              {bucket.errors > 0 && (
-                                <p className="text-destructive">
-                                  {bucket.errors.toLocaleString()} errors
-                                </p>
-                              )}
-                              <p className="text-muted-foreground">
-                                {bucket.avg_ms.toFixed(0)}ms avg
-                              </p>
-                            </div>
-                          </div>
-                        )
-                      })
-                    })()}
-                  </div>
-                  <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-                    <span>{formatBucketTime(analyticsData.buckets[0].bucket, analyticsPeriod)}</span>
-                    {analyticsData.buckets.length > 2 && (
-                      <span>
-                        {formatBucketTime(
-                          analyticsData.buckets[Math.floor(analyticsData.buckets.length / 2)].bucket,
-                          analyticsPeriod
-                        )}
-                      </span>
-                    )}
-                    <span>
-                      {formatBucketTime(
-                        analyticsData.buckets[analyticsData.buckets.length - 1].bucket,
-                        analyticsPeriod
-                      )}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center py-12">
-                  <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-                    <BarChart3 className="size-5 text-muted-foreground" />
-                  </div>
-                  <p className="mt-3 text-sm font-medium">No data yet</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Analytics will appear once your deployment receives traffic.
-                  </p>
-                </div>
-              )}
-            </section>
-          </div>
+          <AnalyticsTab
+            analyticsData={analyticsData}
+            loadingAnalytics={loadingAnalytics}
+            analyticsPeriod={analyticsPeriod}
+            setAnalyticsPeriod={setAnalyticsPeriod}
+            formatBucketTime={formatBucketTime}
+          />
         ) : tab === "env" ? (
           <div className="space-y-6">
             <div className="flex items-center justify-between">

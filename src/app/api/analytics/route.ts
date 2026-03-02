@@ -12,14 +12,12 @@ export async function GET(request: Request) {
   const projectId = searchParams.get("projectId")
   const period = searchParams.get("period") || "24h"
 
-  if (!projectId) {
-    return NextResponse.json({ error: "projectId required" }, { status: 400 })
-  }
-
   try {
-    const res = await fetchRift(
-      `/api/analytics?project_id=${encodeURIComponent(projectId)}&period=${encodeURIComponent(period)}`
-    )
+    const params = new URLSearchParams({ period })
+    if (projectId) {
+      params.set("project_id", projectId)
+    }
+    const res = await fetchRift(`/api/analytics?${params.toString()}`)
     return NextResponse.json(await res.json(), { status: res.status })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected backend error"
