@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 const STORAGE_KEY = "sidebar_ui_state"
 const SCROLL_DEBOUNCE_MS = 200
@@ -37,25 +37,13 @@ function writeState(state: SidebarUIState) {
 }
 
 export function useSidebarState() {
-  // Start with defaults so server & client initial render match (no hydration mismatch).
-  // useLayoutEffect syncs from localStorage before the browser paints.
-  const [state, setState] = useState<SidebarUIState>(DEFAULTS)
-  const hydrated = useRef(false)
-
-  useLayoutEffect(() => {
-    if (!hydrated.current) {
-      hydrated.current = true
-      const persisted = readState()
-      // Only update if there's actually persisted state to avoid a no-op re-render
-      if (Object.keys(persisted.collapsedItems).length > 0 || persisted.scrollTop > 0) {
-        setState(persisted)
-      }
-    }
-  }, [])
+  const [state, setState] = useState<SidebarUIState>(() =>
+    typeof window === "undefined" ? DEFAULTS : readState()
+  )
 
   // Persist on changes (skip the initial hydration write)
   const skipNextWrite = useRef(true)
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (skipNextWrite.current) {
       skipNextWrite.current = false
       return
@@ -90,6 +78,13 @@ export function useSidebarState() {
       setState((prev) => ({ ...prev, scrollTop: value }))
     }, SCROLL_DEBOUNCE_MS)
   }, [])
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    },
+    []
+  )
 
   return { getGroupOpen, setGroupOpen, scrollTop, setScrollTop }
 }

@@ -1,13 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
-  Activity,
   AlertTriangle,
   ArrowLeft,
   BarChart3,
   Check,
-  Clock,
   Copy,
   ExternalLink,
   Eye,
@@ -20,23 +18,13 @@ import {
   MoreVertical,
   Plus,
   Rocket,
-  Route,
   Settings,
-  TerminalSquare,
   Trash2,
-  Zap,
 } from "lucide-react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from "@/components/ui/chart"
 import {
   Dialog,
   DialogContent,
@@ -52,17 +40,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  XAxis,
-  YAxis,
-} from "recharts"
+import { useDeployLogs } from "@/hooks/use-deploy-logs"
+import { useProject } from "@/hooks/use-projects"
+import { useDeployments } from "@/hooks/use-deployments"
+import { useEnvVars } from "@/hooks/use-env-vars"
+import { useAnalytics } from "@/hooks/use-analytics"
+import { useRuntimeStatus, useRuntimeStats } from "@/hooks/use-runtime-status"
+import { useDomains } from "@/hooks/use-domains"
+import { AnimatedPage } from "@/components/animated-page"
+import { AnimatedTabContent } from "@/components/animated-tab-content"
 
 const ACTIVE_DEPLOYMENT_STATUSES = new Set(["queued", "cloning", "building", "deploying"])
 
@@ -76,8 +62,8 @@ type Project = {
   build_command?: string | null
   output_dir?: string | null
   install_command?: string | null
-  subdomain: string
-  public_url: string
+  subdomain?: string | null
+  public_url?: string | null
   webhook_id?: number | null
   created_at: string
   updated_at: string
@@ -124,45 +110,14 @@ type AnalyticsBucket = {
   cold_starts: number
 }
 
-type ReferrerEntry = {
-  referrer: string
-  requests: number
-}
-
-type PathEntry = {
-  path: string
-  requests: number
-  errors: number
-  avg_ms: number
-}
-
 type AnalyticsData = {
   buckets: AnalyticsBucket[]
   total_requests: number
   total_errors: number
-  total_cold_starts: number
   avg_response_ms: number
   error_rate: number
-  top_referrers: ReferrerEntry[]
-  top_paths: PathEntry[]
+  total_cold_starts: number
 }
-
-const analyticsRequestsConfig = {
-  requests: { label: "Requests", color: "var(--chart-1)" },
-  errors: { label: "Errors", color: "var(--color-destructive)" },
-} satisfies ChartConfig
-
-const analyticsResponseConfig = {
-  avg_ms: { label: "Avg Response (ms)", color: "var(--chart-2)" },
-} satisfies ChartConfig
-
-const analyticsReferrerConfig = {
-  requests: { label: "Requests", color: "var(--chart-1)" },
-} satisfies ChartConfig
-
-const analyticsPathConfig = {
-  requests: { label: "Requests", color: "var(--chart-3)" },
-} satisfies ChartConfig
 
 const ANALYTICS_PERIODS = [
   { label: "24h", value: "24h" },
@@ -185,7 +140,35 @@ type EnvVar = {
   preview: string
 }
 
-type Tab = "overview" | "analytics" | "env" | "logs" | "domains" | "settings"
+type RuntimeStatus = {
+  status: "active" | "suspended" | "stopped"
+  deployment_id: string | null
+  url: string | null
+  runtime_mode: string
+}
+
+type RuntimeStats = {
+  mode: string
+  pool: {
+    warm_workers: number
+    active_workers: number
+    suspended_deployments: number
+    max_active: number
+    warm_target: number
+  } | null
+}
+
+type Tab = "overview" | "analytics" | "env" | "logs" | "domains" | "usage" | "settings"
+
+const TAB_CONFIG: { id: Tab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "analytics", label: "Analytics" },
+  { id: "env", label: "Environment" },
+  { id: "logs", label: "Logs" },
+  { id: "domains", label: "Domains" },
+  { id: "usage", label: "Usage" },
+  { id: "settings", label: "Settings" },
+]
 
 function statusBadgeClasses(status: string): string {
   switch (status) {
@@ -338,378 +321,62 @@ function DeploymentRow({ deployment, isLatest }: { deployment: Deployment; isLat
   const isActive = ACTIVE_DEPLOYMENT_STATUSES.has(deployment.status)
 
   return (
-    <div className="group flex items-center gap-4 px-4 py-3 transition-colors hover:bg-muted/40">
-      {/* Status indicator */}
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted/60">
+    <div className="group flex items-start gap-3 border-b border-border/50 px-0 py-3 last:border-b-0">
+      <div className="mt-1.5 shrink-0">
         {isActive ? (
-          <Loader2 className="size-3.5 animate-spin text-amber-600" />
+          <Loader2 className="size-3.5 animate-spin text-amber-500" />
         ) : deployment.status === "ready" ? (
           <Check className="size-3.5 text-emerald-600" />
         ) : deployment.status === "failed" ? (
-          <span className="size-1.5 rounded-full bg-red-500" />
+          <AlertTriangle className="size-3.5 text-red-500" />
         ) : (
-          <span className="size-1.5 rounded-full bg-zinc-400" />
+          <GitCommit className="size-3.5 text-muted-foreground/50" />
         )}
       </div>
 
-      {/* Content */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-sm font-medium">
-            {deployment.commit_message || "Manual deployment"}
-          </p>
-          {isLatest && (
-            <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
-              Latest
-            </span>
-          )}
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1 font-mono">
-            <GitCommit className="size-3" />
-            {deployment.commit_sha.slice(0, 7)}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <GitBranch className="size-3" />
-            {deployment.branch}
-          </span>
-          {deployment.build_duration_ms != null && (
-            <span className="inline-flex items-center gap-1">
-              <Clock className="size-3" />
-              {formatDuration(deployment.build_duration_ms)}
-            </span>
-          )}
-          <span>{timeAgo(deployment.created_at)}</span>
-        </div>
-      </div>
-
-      {/* Right side */}
-      <div className="flex items-center gap-3 shrink-0">
-        {deployment.public_url && deployment.status === "ready" && (
-          <a
-            href={deployment.public_url}
-            target="_blank"
-            rel="noreferrer"
-            className="hidden items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:inline-flex"
-          >
-            <ExternalLink className="size-3" />
-            Visit
-          </a>
-        )}
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${statusBadgeClasses(deployment.status)}`}
-        >
-          {isActive && <Loader2 className="size-2.5 animate-spin" />}
-          {statusLabel[deployment.status] ?? deployment.status}
-        </span>
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Analytics Tab
-// ---------------------------------------------------------------------------
-
-function AnalyticsTab({
-  analyticsData,
-  loadingAnalytics,
-  analyticsPeriod,
-  setAnalyticsPeriod,
-  formatBucketTime,
-}: {
-  analyticsData: AnalyticsData | null
-  loadingAnalytics: boolean
-  analyticsPeriod: string
-  setAnalyticsPeriod: (v: string) => void
-  formatBucketTime: (iso: string, period: string) => string
-}) {
-  const chartData =
-    analyticsData?.buckets.map((b) => ({
-      time: formatBucketTime(b.bucket, analyticsPeriod),
-      requests: b.requests,
-      errors: b.errors,
-      avg_ms: Math.round(b.avg_ms * 100) / 100,
-      cold_starts: b.cold_starts,
-    })) ?? []
-
-  const referrerData =
-    analyticsData?.top_referrers?.map((r) => ({
-      referrer: r.referrer,
-      requests: r.requests,
-    })) ?? []
-
-  const pathData =
-    analyticsData?.top_paths?.map((p) => ({
-      path: p.path,
-      requests: p.requests,
-    })) ?? []
-
-  return (
-    <div className="space-y-6">
-      {/* Period selector */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <BarChart3 className="size-4" />
-          <span className="text-sm font-medium">Request Metrics</span>
-        </div>
-        <div className="flex rounded-md border shadow-sm">
-          {ANALYTICS_PERIODS.map((p) => (
-            <button
-              key={p.value}
-              onClick={() => setAnalyticsPeriod(p.value)}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md ${
-                analyticsPeriod === p.value
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-background text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Stat cards */}
-      {loadingAnalytics ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-lg" />
-          ))}
-        </div>
-      ) : analyticsData ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Activity className="size-4" />
-                <span className="text-xs font-medium">Total Requests</span>
-              </div>
-              <p className="mt-2 text-2xl font-semibold tabular-nums">
-                {analyticsData.total_requests.toLocaleString()}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Clock className="size-4" />
-                <span className="text-xs font-medium">Avg Response Time</span>
-              </div>
-              <p className="mt-2 text-2xl font-semibold tabular-nums">
-                {analyticsData.avg_response_ms.toFixed(0)}
-                <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <AlertTriangle className="size-4" />
-                <span className="text-xs font-medium">Error Rate</span>
-              </div>
-              <p className="mt-2 text-2xl font-semibold tabular-nums">
-                {analyticsData.error_rate.toFixed(1)}
-                <span className="ml-0.5 text-sm font-normal text-muted-foreground">%</span>
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Zap className="size-4" />
-                <span className="text-xs font-medium">Cold Starts</span>
-              </div>
-              <p className="mt-2 text-2xl font-semibold tabular-nums">
-                {(analyticsData.total_cold_starts ?? 0).toLocaleString()}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
-
-      {/* Requests Over Time — Area Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <BarChart3 className="size-4 text-muted-foreground" />
-            Requests Over Time
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loadingAnalytics ? (
-            <Skeleton className="h-[240px] w-full" />
-          ) : chartData.length > 0 ? (
-            <ChartContainer config={analyticsRequestsConfig} className="h-[240px] w-full">
-              <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  className="text-muted-foreground"
-                />
-                <YAxis
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  className="text-muted-foreground"
-                  width={48}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <defs>
-                  <linearGradient id="projFillRequests" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="projFillErrors" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--color-destructive)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="var(--color-destructive)" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <Area
-                  type="monotone"
-                  dataKey="requests"
-                  stroke="var(--chart-1)"
-                  fill="url(#projFillRequests)"
-                  strokeWidth={2}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="errors"
-                  stroke="var(--color-destructive)"
-                  fill="url(#projFillErrors)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ChartContainer>
-          ) : (
-            <div className="flex flex-col items-center py-12">
-              <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-                <BarChart3 className="size-5 text-muted-foreground" />
-              </div>
-              <p className="mt-3 text-sm font-medium">No data yet</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Analytics will appear once your deployment receives traffic.
-              </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm">
+              {deployment.commit_message || (
+                <span className="text-muted-foreground">No commit message</span>
+              )}
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+              <span className="font-mono">{deployment.commit_sha.slice(0, 7)}</span>
+              <span className="text-border">on</span>
+              <span className="font-mono">{deployment.branch}</span>
+              {deployment.build_duration_ms != null && (
+                <>
+                  <span className="text-border">&middot;</span>
+                  <span className="tabular-nums">{formatDuration(deployment.build_duration_ms)}</span>
+                </>
+              )}
+              <span className="text-border">&middot;</span>
+              <span>{timeAgo(deployment.created_at)}</span>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
 
-      {/* Response Time Trend — Line Chart */}
-      {chartData.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-              <Clock className="size-4 text-muted-foreground" />
-              Response Time Trend
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={analyticsResponseConfig} className="h-[200px] w-full">
-              <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  className="text-muted-foreground"
-                />
-                <YAxis
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  className="text-muted-foreground"
-                  width={48}
-                  unit="ms"
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Line
-                  type="monotone"
-                  dataKey="avg_ms"
-                  stroke="var(--chart-2)"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              </LineChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Traffic Sources + Top Pages */}
-      {(referrerData.length > 0 || pathData.length > 0) && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {referrerData.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                  <Globe className="size-4 text-muted-foreground" />
-                  Top Traffic Sources
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer config={analyticsReferrerConfig} className="h-[250px] w-full">
-                  <BarChart
-                    data={referrerData}
-                    layout="vertical"
-                    margin={{ top: 0, right: 16, bottom: 0, left: 0 }}
-                  >
-                    <CartesianGrid horizontal={false} strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                    <YAxis
-                      dataKey="referrer"
-                      type="category"
-                      tick={{ fontSize: 11 }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={100}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="requests" fill="var(--chart-1)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-          )}
-          {pathData.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                  <Route className="size-4 text-muted-foreground" />
-                  Top Pages
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer config={analyticsPathConfig} className="h-[250px] w-full">
-                  <BarChart
-                    data={pathData}
-                    layout="vertical"
-                    margin={{ top: 0, right: 16, bottom: 0, left: 0 }}
-                  >
-                    <CartesianGrid horizontal={false} strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                    <YAxis
-                      dataKey="path"
-                      type="category"
-                      tick={{ fontSize: 11 }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={100}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="requests" fill="var(--chart-3)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-          )}
+          <div className="flex items-center gap-2 shrink-0 mt-0.5">
+            {deployment.public_url && deployment.status === "ready" && (
+              <a
+                href={deployment.public_url}
+                target="_blank"
+                rel="noreferrer"
+                className="hidden text-xs text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+              >
+                <ExternalLink className="size-3.5" />
+              </a>
+            )}
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${statusBadgeClasses(deployment.status)}`}
+            >
+              {isActive && <Loader2 className="size-2.5 animate-spin" />}
+              {statusLabel[deployment.status] ?? deployment.status}
+            </span>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -770,7 +437,7 @@ function SettingsTab({
       {/* Build & Deploy */}
       <section className="rounded-lg border">
         <div className="border-b px-5 py-4">
-          <h2 className="text-sm font-semibold">Build & Deploy</h2>
+          <p className="text-sm font-medium">Build & Deploy</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Configure how your project is built and deployed.
           </p>
@@ -816,7 +483,7 @@ function SettingsTab({
       {/* Project Info */}
       <section className="rounded-lg border">
         <div className="border-b px-5 py-4">
-          <h2 className="text-sm font-semibold">Project Info</h2>
+          <h2 className="text-sm font-medium">Project Info</h2>
         </div>
         <div className="divide-y">
           {([
@@ -841,7 +508,7 @@ function SettingsTab({
       {/* Danger Zone */}
       <section className="rounded-lg border border-destructive/20">
         <div className="border-b border-destructive/20 px-5 py-4">
-          <h2 className="text-sm font-semibold text-destructive">Danger Zone</h2>
+          <h2 className="text-sm font-medium text-destructive">Danger Zone</h2>
         </div>
         <div className="flex items-center justify-between px-5 py-4">
           <div>
@@ -879,9 +546,8 @@ const domainStatusColor: Record<string, string> = {
 }
 
 function DomainsTab({ project }: { project: Project }) {
-  const [domains, setDomains] = useState<Domain[]>([])
-  const [allDomains, setAllDomains] = useState<Domain[]>([])
-  const [loading, setLoading] = useState(true)
+  const { domains, isLoading: loading, mutate: mutateDomains } = useDomains(project.id)
+  const { domains: allDomains, mutate: mutateAllDomains } = useDomains()
   const [assignOpen, setAssignOpen] = useState(false)
   const [assigningId, setAssigningId] = useState<string | null>(null)
 
@@ -890,25 +556,10 @@ function DomainsTab({ project }: { project: Project }) {
     [allDomains]
   )
 
-  const fetchDomains = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [projectRes, allRes] = await Promise.all([
-        fetch(`/api/domains?projectId=${encodeURIComponent(project.id)}`),
-        fetch("/api/domains"),
-      ])
-      if (projectRes.ok) setDomains(await projectRes.json())
-      if (allRes.ok) setAllDomains(await allRes.json())
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false)
-    }
-  }, [project.id])
-
-  useEffect(() => {
-    fetchDomains()
-  }, [fetchDomains])
+  function refreshDomains() {
+    void mutateDomains()
+    void mutateAllDomains()
+  }
 
   async function handleAssign(domainId: string) {
     setAssigningId(domainId)
@@ -924,7 +575,7 @@ function DomainsTab({ project }: { project: Project }) {
       }
       toast.success("Domain assigned")
       setAssignOpen(false)
-      fetchDomains()
+      refreshDomains()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong")
     } finally {
@@ -941,7 +592,7 @@ function DomainsTab({ project }: { project: Project }) {
       })
       if (res.ok) {
         toast.success("Domain unassigned")
-        fetchDomains()
+        refreshDomains()
       } else {
         toast.error("Failed to unassign domain")
       }
@@ -959,7 +610,7 @@ function DomainsTab({ project }: { project: Project }) {
       })
       if (res.ok) {
         toast.success("Primary domain updated")
-        fetchDomains()
+        refreshDomains()
       } else {
         toast.error("Failed to update primary domain")
       }
@@ -969,15 +620,15 @@ function DomainsTab({ project }: { project: Project }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      <div className="flex items-baseline justify-between">
+        <p className="text-sm font-medium">Custom Domains</p>
+        <Button size="sm" variant="outline" onClick={() => setAssignOpen(true)}>
+          <Globe className="size-3.5" />
+          Assign Domain
+        </Button>
+      </div>
       <section className="overflow-hidden rounded-lg border">
-        <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
-          <h2 className="text-sm font-semibold">Custom Domains</h2>
-          <Button size="sm" onClick={() => setAssignOpen(true)}>
-            <Globe className="size-3.5" />
-            Assign Domain
-          </Button>
-        </div>
 
         {loading ? (
           <div className="p-4 space-y-3">
@@ -1099,22 +750,43 @@ function DomainsTab({ project }: { project: Project }) {
 export default function ProjectDetailPage() {
   const params = useParams<{ projectName: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
   const projectName = decodeURIComponent(params.projectName)
 
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loadingProject, setLoadingProject] = useState(true)
-  const [deployments, setDeployments] = useState<Deployment[]>([])
-  const [logs, setLogs] = useState<DeployLog[]>([])
-  const [loadingDeployments, setLoadingDeployments] = useState(false)
+  // URL-based tab state
+  const rawTab = searchParams.get("tab") as Tab | null
+  const tab: Tab = rawTab && TAB_CONFIG.some((t) => t.id === rawTab) ? rawTab : "overview"
+  function setTab(newTab: Tab) {
+    const params = new URLSearchParams(searchParams.toString())
+    if (newTab === "overview") {
+      params.delete("tab")
+    } else {
+      params.set("tab", newTab)
+    }
+    const query = params.toString()
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false })
+  }
+
+  // Local state
   const [deploying, setDeploying] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>("overview")
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [analyticsPeriod, setAnalyticsPeriod] = useState("24h")
-  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
-  const [loadingAnalytics, setLoadingAnalytics] = useState(false)
-  const [envVars, setEnvVars] = useState<EnvVar[]>([])
-  const [loadingEnvVars, setLoadingEnvVars] = useState(false)
+
+  // SWR hooks
+  const { project, isLoading: loadingProject, error, mutate: mutateProjects } = useProject(projectName)
+  const { deployments, isLoading: loadingDeployments, mutate: mutateDeployments } = useDeployments(project?.id ?? null)
+  const { analytics: analyticsData, isLoading: loadingAnalytics } = useAnalytics(
+    tab === "analytics" ? project?.id ?? null : null,
+    analyticsPeriod
+  )
+  const { runtimeStatus, isLoading: loadingRuntimeStatus } = useRuntimeStatus(
+    tab === "usage" ? project?.id ?? null : null
+  )
+  const { runtimeStats } = useRuntimeStats()
+  const { envVars, isLoading: loadingEnvVars, mutate: mutateEnvVars } = useEnvVars(
+    tab === "env" ? project?.id ?? null : null
+  )
   const [addEnvOpen, setAddEnvOpen] = useState(false)
   const [newEnvKey, setNewEnvKey] = useState("")
   const [newEnvValue, setNewEnvValue] = useState("")
@@ -1123,66 +795,19 @@ export default function ProjectDetailPage() {
   const previousDeploymentStatus = useRef<string | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
 
-  const project = useMemo(
-    () => projects.find((item) => item.name === projectName) ?? null,
-    [projects, projectName]
-  )
+  const loadingUsage = loadingRuntimeStatus
 
   const latestDeployment = deployments[0] ?? null
   const latestDeploymentIsActive = latestDeployment
     ? ACTIVE_DEPLOYMENT_STATUSES.has(latestDeployment.status)
     : false
 
-  const loadProjects = useCallback(async () => {
-    setLoadingProject(true)
-    setError(null)
-    try {
-      const response = await fetch("/api/projects", { cache: "no-store" })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.error || "Failed to load projects")
-      setProjects(data as Project[])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load projects")
-    } finally {
-      setLoadingProject(false)
-    }
-  }, [])
+  const { logs, connected: logsConnected, reset: resetLogs } = useDeployLogs({
+    deploymentId: latestDeployment?.id ?? null,
+    isActive: latestDeploymentIsActive,
+  })
 
-  const loadDeployments = useCallback(async (projectId: string) => {
-    setLoadingDeployments(true)
-    try {
-      const response = await fetch(`/api/deployments?project_id=${encodeURIComponent(projectId)}`, { cache: "no-store" })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.error || "Failed to load deployments")
-      const items = data as Deployment[]
-      setDeployments(items)
-
-      if (items[0]) {
-        const logsRes = await fetch(`/api/logs?deployment_id=${encodeURIComponent(items[0].id)}`, { cache: "no-store" })
-        const logsData = await logsRes.json().catch(() => [])
-        if (logsRes.ok) setLogs(logsData as DeployLog[])
-      } else {
-        setLogs([])
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load deployments")
-    } finally {
-      setLoadingDeployments(false)
-    }
-  }, [])
-
-  useEffect(() => { void loadProjects() }, [loadProjects])
-
-  useEffect(() => {
-    if (project?.id) void loadDeployments(project.id)
-  }, [project?.id, loadDeployments])
-
-  useEffect(() => {
-    if (!project?.id || !latestDeploymentIsActive) return
-    const timer = window.setTimeout(() => void loadDeployments(project.id), 3000)
-    return () => window.clearTimeout(timer)
-  }, [project?.id, latestDeployment?.id, latestDeployment?.status, latestDeploymentIsActive, loadDeployments])
-
+  // Deployment status change toasts
   useEffect(() => {
     if (!latestDeployment) { previousDeploymentStatus.current = null; return }
     const prev = previousDeploymentStatus.current
@@ -1196,38 +821,6 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [logs])
-
-  // Fetch analytics when tab is active
-  useEffect(() => {
-    if (tab !== "analytics" || !project?.id) return
-    setLoadingAnalytics(true)
-    fetch(`/api/analytics?projectId=${encodeURIComponent(project.id)}&period=${encodeURIComponent(analyticsPeriod)}`, { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => { if (data) setAnalyticsData(data as AnalyticsData) })
-      .catch(() => {})
-      .finally(() => setLoadingAnalytics(false))
-  }, [tab, project?.id, analyticsPeriod])
-
-  // Fetch env vars when tab is active
-  const loadEnvVars = useCallback(async (projectId: string) => {
-    setLoadingEnvVars(true)
-    try {
-      const res = await fetch(`/api/env-vars?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" })
-      if (res.ok) {
-        const data = await res.json()
-        setEnvVars(data as EnvVar[])
-      }
-    } catch {
-      // silently fail
-    } finally {
-      setLoadingEnvVars(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (tab !== "env" || !project?.id) return
-    void loadEnvVars(project.id)
-  }, [tab, project?.id, loadEnvVars])
 
   async function handleAddEnvVar() {
     if (!project || !newEnvKey.trim()) return
@@ -1245,7 +838,7 @@ export default function ProjectDetailPage() {
       setNewEnvValue("")
       setShowEnvValue(false)
       setAddEnvOpen(false)
-      void loadEnvVars(project.id)
+      void mutateEnvVars()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add variable")
     } finally {
@@ -1264,7 +857,7 @@ export default function ProjectDetailPage() {
         throw new Error(data.error || "Failed to delete variable")
       }
       toast.success(`Variable "${envVar.key}" deleted`)
-      void loadEnvVars(project.id)
+      void mutateEnvVars()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete variable")
     }
@@ -1283,7 +876,8 @@ export default function ProjectDetailPage() {
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.error || "Failed to start deployment")
       toast.success("Deployment queued")
-      await loadDeployments(project.id)
+      resetLogs()
+      void mutateDeployments()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to start deployment")
     } finally {
@@ -1293,21 +887,23 @@ export default function ProjectDetailPage() {
 
   if (loadingProject) {
     return (
-      <div className="flex flex-col gap-6 p-4 sm:p-6">
-        <div className="flex items-center gap-3">
-          <Skeleton className="size-8 rounded-full" />
-          <div className="space-y-2">
-            <Skeleton className="h-6 w-40" />
-            <Skeleton className="h-4 w-56" />
-          </div>
+      <div className="p-4 sm:p-8">
+        <div className="space-y-1">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-64" />
         </div>
-        <Skeleton className="h-9 w-48 rounded-lg" />
-        <div className="space-y-2">
-          <Skeleton className="h-14 w-full rounded-lg" />
-          <Skeleton className="h-14 w-full rounded-lg" />
-          <Skeleton className="h-14 w-full rounded-lg" />
+        <div className="mt-8 space-y-6">
+          <Skeleton className="h-24 w-full" />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex gap-3 py-3">
+              <Skeleton className="size-3.5 shrink-0 rounded" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            </div>
+          ))}
         </div>
-        <Skeleton className="h-40 w-full rounded-lg" />
       </div>
     )
   }
@@ -1316,7 +912,7 @@ export default function ProjectDetailPage() {
     return (
       <div className="flex flex-col items-center justify-center gap-3 p-16">
         <p className="text-sm text-destructive">{error}</p>
-        <Button variant="outline" size="sm" onClick={() => void loadProjects()}>Retry</Button>
+        <Button variant="outline" size="sm" onClick={() => void mutateProjects()}>Retry</Button>
       </div>
     )
   }
@@ -1334,45 +930,56 @@ export default function ProjectDetailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-0 p-4 sm:p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 pb-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.push("/projects")}
-            className="flex size-8 items-center justify-center rounded-lg border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-          </button>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-semibold tracking-tight">{project.name}</h1>
-              <span className="rounded-md border px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                {project.framework}
-              </span>
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <a
-                href={project.repo_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-              >
-                <GitBranch className="size-3" />
-                {project.repo_url.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
-              </a>
-              {project.public_url && (
+    <AnimatedPage className="p-4 sm:px-8 sm:py-6">
+      {/* Header — flat, no boxes */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.push("/projects")}
+              className="text-muted-foreground transition-colors hover:text-foreground"
+              aria-label="Back to projects"
+            >
+              <ArrowLeft className="size-4" />
+            </button>
+            <h1 className="text-lg font-semibold">{project.name}</h1>
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <span className={`size-1.5 rounded-full ${
+                latestDeployment?.status === "ready" ? "bg-emerald-500" :
+                latestDeploymentIsActive ? "bg-amber-400 animate-pulse" :
+                latestDeployment?.status === "failed" ? "bg-red-500" : "bg-zinc-300"
+              }`} />
+              {latestDeployment?.status === "ready" ? "Production" :
+               latestDeployment ? (statusLabel[latestDeployment.status] ?? latestDeployment.status) : "Not deployed"}
+            </span>
+            <span className="text-border">&middot;</span>
+            <span className="font-mono text-[11px]">{project.framework}</span>
+            <span className="text-border">&middot;</span>
+            <a
+              href={project.repo_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 font-mono text-[11px] hover:text-foreground transition-colors"
+            >
+              <GitBranch className="size-3" />
+              {project.repo_url.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
+            </a>
+            {project.public_url && (
+              <>
+                <span className="text-border">&middot;</span>
                 <a
                   href={project.public_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                  className="inline-flex items-center gap-1 font-mono text-[11px] hover:text-foreground transition-colors"
                 >
-                  <Globe className="size-3" />
                   {project.public_url.replace(/^https?:\/\//, "")}
+                  <ExternalLink className="size-2.5" />
                 </a>
-              )}
-            </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -1381,14 +988,6 @@ export default function ProjectDetailPage() {
             {deploying ? <Loader2 className="size-3.5 animate-spin" /> : <Rocket className="size-3.5" />}
             Deploy
           </Button>
-          {project.public_url && (
-            <Button variant="outline" size="sm" asChild>
-              <a href={project.public_url} target="_blank" rel="noreferrer">
-                <ExternalLink className="size-3.5" />
-                Visit
-              </a>
-            </Button>
-          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="size-8 p-0">
@@ -1410,45 +1009,173 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="-mx-4 border-b px-4 sm:-mx-6 sm:px-6">
-        <nav className="flex gap-6">
-          {(["overview", "analytics", "env", "logs", "domains", "settings"] as const).map((t) => (
+      {/* Tabs — underline style, no container */}
+      <div className="mt-6 border-b">
+        <nav className="-mb-px flex gap-0">
+          {TAB_CONFIG.map(({ id, label }) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`relative pb-3 text-sm font-medium transition-colors ${
-                tab === t
-                  ? "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary"
+              key={id}
+              onClick={() => setTab(id)}
+              className={`relative px-4 pb-2.5 text-sm transition-colors ${
+                tab === id
+                  ? "text-foreground font-medium"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {t === "env" ? "Environment" : t.charAt(0).toUpperCase() + t.slice(1)}
+              {label}
+              {tab === id && (
+                <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" />
+              )}
             </button>
           ))}
         </nav>
       </div>
 
       {/* Content */}
-      <div className="pt-6">
+      <div className="mt-6">
+        <AnimatedTabContent tabKey={tab}>
         {tab === "domains" ? (
           <DomainsTab project={project} />
         ) : tab === "analytics" ? (
-          <AnalyticsTab
-            analyticsData={analyticsData}
-            loadingAnalytics={loadingAnalytics}
-            analyticsPeriod={analyticsPeriod}
-            setAnalyticsPeriod={setAnalyticsPeriod}
-            formatBucketTime={formatBucketTime}
-          />
-        ) : tab === "env" ? (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Key className="size-4" />
-                <span className="text-sm font-medium">Environment Variables</span>
+            {/* Period selector */}
+            <div className="flex items-baseline justify-between">
+              <p className="text-sm font-medium">Request Metrics</p>
+              <div className="flex gap-1">
+                {ANALYTICS_PERIODS.map((p) => (
+                  <button
+                    key={p.value}
+                    onClick={() => setAnalyticsPeriod(p.value)}
+                    className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+                      analyticsPeriod === p.value
+                        ? "bg-foreground text-background font-medium"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
               </div>
-              <Button size="sm" onClick={() => setAddEnvOpen(true)}>
+            </div>
+
+            {/* Stat row — inline, not cards */}
+            {loadingAnalytics ? (
+              <Skeleton className="h-10 w-full" />
+            ) : analyticsData ? (
+              <div className="flex flex-wrap gap-x-8 gap-y-2 border-b pb-4">
+                <div>
+                  <p className="text-2xl font-semibold tabular-nums">{analyticsData.total_requests.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">requests</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold tabular-nums">{analyticsData.avg_response_ms.toFixed(0)}<span className="text-sm font-normal text-muted-foreground">ms</span></p>
+                  <p className="text-xs text-muted-foreground">avg response</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold tabular-nums">{analyticsData.error_rate.toFixed(1)}<span className="text-sm font-normal text-muted-foreground">%</span></p>
+                  <p className="text-xs text-muted-foreground">error rate</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold tabular-nums">{analyticsData.total_cold_starts.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">cold starts</p>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Bar chart */}
+            <section>
+              <p className="mb-3 text-sm font-medium">Requests Over Time</p>
+
+              {loadingAnalytics ? (
+                <div className="p-4">
+                  <Skeleton className="h-[200px] w-full" />
+                </div>
+              ) : analyticsData && analyticsData.buckets.length > 0 ? (
+                <div className="p-4">
+                  <div className="flex items-end gap-px" style={{ height: 200 }}>
+                    {(() => {
+                      const maxReqs = Math.max(...analyticsData.buckets.map((b) => b.requests), 1)
+                      return analyticsData.buckets.map((bucket) => {
+                        const height = (bucket.requests / maxReqs) * 100
+                        const errorHeight = bucket.requests > 0 ? (bucket.errors / maxReqs) * 100 : 0
+                        return (
+                          <div
+                            key={bucket.bucket}
+                            className="group relative flex-1"
+                            style={{ height: "100%", minWidth: 2 }}
+                          >
+                            <div
+                              className="absolute bottom-0 w-full rounded-t bg-primary/80 transition-colors group-hover:bg-primary"
+                              style={{ height: `${height}%` }}
+                            />
+                            {errorHeight > 0 && (
+                              <div
+                                className="absolute bottom-0 w-full rounded-t bg-destructive/70"
+                                style={{ height: `${errorHeight}%` }}
+                              />
+                            )}
+                            <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden -translate-x-1/2 rounded-md border bg-popover px-3 py-2 text-xs shadow-md group-hover:block">
+                              <p className="whitespace-nowrap font-medium">
+                                {formatBucketTime(bucket.bucket, analyticsPeriod)}
+                              </p>
+                              <p className="mt-1 text-muted-foreground">
+                                {bucket.requests.toLocaleString()} requests
+                              </p>
+                              {bucket.errors > 0 && (
+                                <p className="text-destructive">
+                                  {bucket.errors.toLocaleString()} errors
+                                </p>
+                              )}
+                              <p className="text-muted-foreground">
+                                {bucket.avg_ms.toFixed(0)}ms avg
+                              </p>
+                              {bucket.cold_starts > 0 && (
+                                <p className="text-muted-foreground">
+                                  {bucket.cold_starts.toLocaleString()} cold starts
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })
+                    })()}
+                  </div>
+                  <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
+                    <span>{formatBucketTime(analyticsData.buckets[0].bucket, analyticsPeriod)}</span>
+                    {analyticsData.buckets.length > 2 && (
+                      <span>
+                        {formatBucketTime(
+                          analyticsData.buckets[Math.floor(analyticsData.buckets.length / 2)].bucket,
+                          analyticsPeriod
+                        )}
+                      </span>
+                    )}
+                    <span>
+                      {formatBucketTime(
+                        analyticsData.buckets[analyticsData.buckets.length - 1].bucket,
+                        analyticsPeriod
+                      )}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center py-12">
+                  <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                    <BarChart3 className="size-5 text-muted-foreground" />
+                  </div>
+                  <p className="mt-3 text-sm font-medium">No data yet</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Analytics will appear once your deployment receives traffic.
+                  </p>
+                </div>
+              )}
+            </section>
+          </div>
+        ) : tab === "env" ? (
+          <div className="space-y-4">
+            <div className="flex items-baseline justify-between">
+              <p className="text-sm font-medium">Environment Variables</p>
+              <Button size="sm" variant="outline" onClick={() => setAddEnvOpen(true)}>
                 <Plus className="size-3.5" />
                 Add Variable
               </Button>
@@ -1552,12 +1279,10 @@ export default function ProjectDetailPage() {
           </div>
         ) : tab === "logs" ? (
           <section className="overflow-hidden rounded-lg border">
-            <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
+            <div className="flex items-center justify-between border-b px-4 py-2.5">
+              <p className="text-sm font-medium">Build Logs</p>
               <div className="flex items-center gap-2">
-                <TerminalSquare className="size-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold">Build Logs</h2>
-              </div>
-              <div className="flex items-center gap-2">
+                {logsConnected && <span className="size-1.5 rounded-full bg-emerald-500" title="Live" />}
                 {latestDeploymentIsActive && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
                 {latestDeployment && (
                   <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
@@ -1598,59 +1323,205 @@ export default function ProjectDetailPage() {
               )}
             </div>
           </section>
-        ) : tab === "overview" ? (
+        ) : tab === "usage" ? (
           <div className="space-y-6">
-            {/* Deployments */}
-            <section className="overflow-hidden rounded-lg border">
-              <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
-                <h2 className="text-sm font-semibold">Deployments</h2>
-                <div className="flex items-center gap-2">
-                  {loadingDeployments && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
-                  {deployments.length > 0 && (
-                    <span className="text-xs text-muted-foreground">{deployments.length} total</span>
+            {loadingUsage ? (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Skeleton className="h-20 rounded-lg" />
+                <Skeleton className="h-20 rounded-lg" />
+                <Skeleton className="h-20 rounded-lg" />
+              </div>
+            ) : (
+              <>
+                {/* Runtime status — inline stats, not cards */}
+                <div className="flex flex-wrap gap-x-8 gap-y-3 border-b pb-5">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={`size-1.5 rounded-full ${
+                        runtimeStatus?.status === "active" ? "bg-emerald-500" :
+                        runtimeStatus?.status === "suspended" ? "bg-amber-500" : "bg-zinc-400"
+                      }`} />
+                      <p className="text-lg font-semibold capitalize">{runtimeStatus?.status ?? "Unknown"}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">runtime status</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold capitalize">{runtimeStatus?.runtime_mode ?? "process"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {runtimeStatus?.runtime_mode === "pool" ? "pre-warmed pool" : "dedicated subprocess"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold font-mono">
+                      {runtimeStatus?.deployment_id ? runtimeStatus.deployment_id.slice(0, 8) : "—"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">active deployment</p>
+                  </div>
+                </div>
+
+                {/* Pool stats */}
+                {runtimeStats?.pool && (
+                  <div>
+                    <p className="mb-3 text-sm font-medium">Worker Pool</p>
+                    <div className="flex flex-wrap gap-x-8 gap-y-2">
+                      <div>
+                        <p className="text-2xl font-semibold tabular-nums">
+                          {runtimeStats.pool.warm_workers}<span className="text-sm font-normal text-muted-foreground">/{runtimeStats.pool.warm_target}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">warm workers</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-semibold tabular-nums">
+                          {runtimeStats.pool.active_workers}<span className="text-sm font-normal text-muted-foreground">/{runtimeStats.pool.max_active}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">active workers</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-semibold tabular-nums">{runtimeStats.pool.suspended_deployments}</p>
+                        <p className="text-xs text-muted-foreground">suspended</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-semibold tabular-nums">
+                          {runtimeStats.pool.max_active > 0
+                            ? Math.round((runtimeStats.pool.active_workers / runtimeStats.pool.max_active) * 100)
+                            : 0}<span className="text-sm font-normal text-muted-foreground">%</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">utilization</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Recent deployments */}
+                <div>
+                  <p className="mb-3 text-sm font-medium">Recent Deployments</p>
+                  {deployments.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">No deployments yet</p>
+                  ) : (
+                    <div>
+                      {deployments.slice(0, 5).map((d) => (
+                        <div key={d.id} className="flex items-center justify-between border-b border-border/50 py-3 last:border-b-0">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className={`shrink-0 size-1.5 rounded-full ${
+                              d.status === "ready" ? "bg-emerald-500" :
+                              d.status === "failed" ? "bg-red-500" :
+                              d.status === "cancelled" ? "bg-zinc-400" : "bg-amber-500"
+                            }`} />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm">{d.commit_message || d.commit_sha.slice(0, 7)}</p>
+                              <p className="text-xs text-muted-foreground">{timeAgo(d.created_at)}</p>
+                            </div>
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${statusBadgeClasses(d.status)}`}>
+                            {d.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
+              </>
+            )}
+          </div>
+        ) : tab === "overview" ? (
+          <>
+            {/* Production deployment — hero card */}
+            {latestDeployment && latestDeployment.status === "ready" && (
+              <div className="mb-8 rounded-lg border p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-muted-foreground">Production Deployment</p>
+                    <p className="mt-1.5 truncate text-sm font-medium">
+                      {latestDeployment.commit_message || "Manual deployment"}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                      <span className="font-mono">{latestDeployment.commit_sha.slice(0, 7)}</span>
+                      <span className="text-border">on</span>
+                      <span className="font-mono">{latestDeployment.branch}</span>
+                      {latestDeployment.build_duration_ms != null && (
+                        <>
+                          <span className="text-border">&middot;</span>
+                          <span className="tabular-nums">{formatDuration(latestDeployment.build_duration_ms)}</span>
+                        </>
+                      )}
+                      <span className="text-border">&middot;</span>
+                      <span>{timeAgo(latestDeployment.created_at)}</span>
+                    </div>
+                  </div>
+                  {project.public_url && (
+                    <a
+                      href={project.public_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      Visit
+                    </a>
+                  )}
+                </div>
+                {project.public_url && (
+                  <div className="mt-3 flex items-center gap-1.5 rounded-md bg-muted/50 px-3 py-2 font-mono text-xs text-muted-foreground">
+                    <Globe className="size-3 shrink-0" />
+                    <span className="truncate">{project.public_url.replace(/^https?:\/\//, "")}</span>
+                    <CopyButton value={project.public_url} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Active deployment banner */}
+            {latestDeploymentIsActive && latestDeployment && (
+              <div className="mb-8 flex items-center gap-3 rounded-lg border border-amber-200/60 bg-amber-50/30 px-5 py-4">
+                <Loader2 className="size-4 animate-spin text-amber-600 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">
+                    {statusLabel[latestDeployment.status] ?? "Deploying"}
+                  </p>
+                  <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="font-mono">{latestDeployment.commit_sha.slice(0, 7)}</span>
+                    {latestDeployment.commit_message && (
+                      <>
+                        <span className="text-border">&middot;</span>
+                        <span className="truncate">{latestDeployment.commit_message}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Deployment list — no wrapping card, just rows */}
+            <div>
+              <div className="mb-4 flex items-baseline justify-between">
+                <p className="text-sm font-medium">Deployments</p>
+                {loadingDeployments && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
               </div>
 
-              {deployments.length === 0 ? (
-                <div className="flex flex-col items-center py-12">
-                  <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-                    <Rocket className="size-5 text-muted-foreground" />
-                  </div>
-                  <p className="mt-3 text-sm font-medium">No deployments yet</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Click Deploy to create your first deployment.
-                  </p>
+              {deployments.length === 0 && !loadingDeployments ? (
+                <div className="py-16 text-center">
+                  <p className="text-sm text-muted-foreground">No deployments yet.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Push to your repository or click Deploy to get started.</p>
                 </div>
               ) : (
-                <div className="divide-y">
+                <div>
                   {deployments.map((d, i) => (
                     <DeploymentRow key={d.id} deployment={d} isLatest={i === 0} />
                   ))}
                 </div>
               )}
-
-              {latestDeploymentIsActive && (
-                <div className="border-t bg-amber-50/50 px-4 py-2.5">
-                  <p className="flex items-center gap-2 text-xs font-medium text-amber-700">
-                    <Loader2 className="size-3 animate-spin" />
-                    Deployment in progress — auto-refreshing
-                  </p>
-                </div>
-              )}
-            </section>
-
-          </div>
+            </div>
+          </>
         ) : (
           <SettingsTab
             project={project}
-            onUpdated={() => void loadProjects()}
+            onUpdated={() => void mutateProjects()}
             onDeleteClick={() => setDeleteOpen(true)}
           />
         )}
+        </AnimatedTabContent>
       </div>
 
       <DeleteProjectDialog project={project} open={deleteOpen} onOpenChange={setDeleteOpen} />
-    </div>
+    </AnimatedPage>
   )
 }

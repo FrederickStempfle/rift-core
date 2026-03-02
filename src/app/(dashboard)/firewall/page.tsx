@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
+import useSWR from "swr"
 import { Check, Copy, Loader2, Plus, Shield, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,6 +14,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
+import { useProjects } from "@/hooks/use-projects"
+import { AnimatedPage } from "@/components/animated-page"
 
 type Project = {
   id: string
@@ -31,51 +34,28 @@ type FirewallRule = {
 type FirewallMode = "allow_all" | "block_all"
 
 export default function FirewallPage() {
-  const [projects, setProjects] = useState<Project[]>([])
+  const { projects, isLoading: loadingProjects } = useProjects()
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
-  const [rules, setRules] = useState<FirewallRule[]>([])
-  const [mode, setMode] = useState<FirewallMode>("allow_all")
-  const [loading, setLoading] = useState(true)
-  const [loadingRules, setLoadingRules] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [togglingMode, setTogglingMode] = useState(false)
 
   useEffect(() => {
-    async function loadProjects() {
-      try {
-        const res = await fetch("/api/projects", { cache: "no-store" })
-        if (res.ok) {
-          const data = (await res.json()) as Project[]
-          setProjects(data)
-          if (data.length > 0) setSelectedProjectId(data[0].id)
-        }
-      } catch { /* ignore */ } finally {
-        setLoading(false)
-      }
+    if (projects.length > 0 && !selectedProjectId) {
+      setSelectedProjectId(projects[0].id)
     }
-    loadProjects()
-  }, [])
+  }, [projects, selectedProjectId])
 
-  const fetchRules = useCallback(async (projectId: string) => {
-    setLoadingRules(true)
-    try {
-      const [rulesRes, modeRes] = await Promise.all([
-        fetch(`/api/firewall?projectId=${encodeURIComponent(projectId)}`),
-        fetch(`/api/firewall?projectId=${encodeURIComponent(projectId)}&mode=1`),
-      ])
-      if (rulesRes.ok) setRules(await rulesRes.json())
-      if (modeRes.ok) {
-        const data = await modeRes.json()
-        setMode(data.mode)
-      }
-    } catch { /* ignore */ } finally {
-      setLoadingRules(false)
-    }
-  }, [])
+  const { data: rulesData, mutate: mutateRules } = useSWR(
+    selectedProjectId ? `/api/firewall?projectId=${encodeURIComponent(selectedProjectId)}` : null
+  )
+  const rules = (rulesData ?? []) as FirewallRule[]
 
-  useEffect(() => {
-    if (selectedProjectId) fetchRules(selectedProjectId)
-  }, [selectedProjectId, fetchRules])
+  const { data: modeData, mutate: mutateMode } = useSWR(
+    selectedProjectId ? `/api/firewall?projectId=${encodeURIComponent(selectedProjectId)}&mode=1` : null
+  )
+  const mode = (modeData?.mode ?? "allow_all") as FirewallMode
+
+  const loadingRules = !rulesData && selectedProjectId !== null
 
   async function handleToggleMode() {
     if (!selectedProjectId) return
@@ -88,7 +68,7 @@ export default function FirewallPage() {
         body: JSON.stringify({ projectId: selectedProjectId, mode: newMode }),
       })
       if (res.ok) {
-        setMode(newMode)
+        mutateMode()
         toast.success(`Firewall mode set to ${newMode === "allow_all" ? "Allow All" : "Block All"}`)
       } else {
         const data = await res.json().catch(() => ({}))
@@ -110,7 +90,7 @@ export default function FirewallPage() {
       )
       if (res.ok || res.status === 204) {
         toast.success("Rule deleted")
-        fetchRules(selectedProjectId)
+        mutateRules()
       } else {
         toast.error("Failed to delete rule")
       }
@@ -121,7 +101,7 @@ export default function FirewallPage() {
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId)
 
-  if (loading) {
+  if (loadingProjects) {
     return (
       <div className="flex flex-col gap-8 p-4 sm:p-6">
         <div>
@@ -135,7 +115,7 @@ export default function FirewallPage() {
   }
 
   return (
-    <div className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-8 p-4 sm:p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -299,10 +279,10 @@ export default function FirewallPage() {
           projectId={selectedProjectId}
           projectName={selectedProject?.name ?? ""}
           defaultAction={mode === "allow_all" ? "block" : "allow"}
-          onCreated={() => fetchRules(selectedProjectId!)}
+          onCreated={() => mutateRules()}
         />
       )}
-    </div>
+    </AnimatedPage>
   )
 }
 

@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { GitBranch, Globe, Plus, Search, Loader2, Link, ChevronDown } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { useProjects } from "@/hooks/use-projects"
+import { AnimatedPage } from "@/components/animated-page"
+import { AnimatedList, AnimatedListItem } from "@/components/animated-list"
 import {
   Dialog,
   DialogContent,
@@ -35,8 +38,8 @@ type Project = {
   build_command?: string | null
   output_dir?: string | null
   install_command?: string | null
-  subdomain: string
-  public_url: string
+  subdomain?: string | null
+  public_url?: string | null
   webhook_id?: number | null
   created_at: string
   updated_at: string
@@ -188,7 +191,6 @@ function NewProjectDialog({
           name: projectName,
           repo_url: repoUrl,
           branch,
-          subdomain: projectName,
           ...(buildCommand && { build_command: buildCommand }),
           ...(installCommand && { install_command: installCommand }),
           ...(outputDir && { output_dir: outputDir }),
@@ -403,34 +405,10 @@ function NewProjectDialog({
 
 export default function ProjectsPage() {
   const [open, setOpen] = useState(false)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const loadProjects = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const projRes = await fetch("/api/projects")
-      if (!projRes.ok) {
-        const data = await projRes.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to load projects")
-      }
-      const data = (await projRes.json()) as Project[]
-      setProjects(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load projects")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadProjects()
-  }, [loadProjects])
+  const { projects, isLoading: loading, error, mutate } = useProjects()
 
   return (
-    <div className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-8 p-4 sm:p-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
@@ -440,7 +418,7 @@ export default function ProjectsPage() {
           <Plus className="size-3.5" />
           New Project
         </Button>
-        <NewProjectDialog open={open} onOpenChange={setOpen} onCreated={() => void loadProjects()} />
+        <NewProjectDialog open={open} onOpenChange={setOpen} onCreated={() => void mutate()} />
       </div>
 
       {loading ? (
@@ -457,7 +435,7 @@ export default function ProjectsPage() {
       ) : error ? (
         <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-5">
           <p className="text-sm text-destructive">{error}</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => void loadProjects()}>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => void mutate()}>
             Retry
           </Button>
         </div>
@@ -473,38 +451,41 @@ export default function ProjectsPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <AnimatedList className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <a
-              key={project.id}
-              href={`/projects/${project.name}`}
-              className="group rounded-lg border p-5 transition-colors hover:bg-muted/60"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-medium">{project.name}</h3>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{project.framework}</p>
+            <AnimatedListItem key={project.id}>
+              <a
+                href={`/projects/${project.name}`}
+                className="group block rounded-lg border p-5 transition-colors hover:bg-muted/60"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-medium">{project.name}</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{project.framework}</p>
+                  </div>
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="size-1.5 rounded-full bg-success" />
+                    configured
+                  </span>
                 </div>
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="size-1.5 rounded-full bg-success" />
-                  configured
-                </span>
-              </div>
-              <div className="mt-4 flex flex-col gap-1.5 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5">
-                  <GitBranch className="size-3" />
-                  <span className="font-mono">{project.branch}</span>
+                <div className="mt-4 flex flex-col gap-1.5 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    <GitBranch className="size-3" />
+                    <span className="font-mono">{project.branch}</span>
+                  </div>
+                  {project.public_url && (
+                    <div className="flex items-center gap-1.5">
+                      <Globe className="size-3" />
+                      <span>{project.public_url.replace(/^https?:\/\//, "")}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <Globe className="size-3" />
-                  <span>{project.public_url.replace(/^https?:\/\//, "")}</span>
-                </div>
-              </div>
-              <p className="mt-3 truncate text-xs text-muted-foreground">{project.repo_url}</p>
-            </a>
+                <p className="mt-3 truncate text-xs text-muted-foreground">{project.repo_url}</p>
+              </a>
+            </AnimatedListItem>
           ))}
-        </div>
+        </AnimatedList>
       )}
-    </div>
+    </AnimatedPage>
   )
 }

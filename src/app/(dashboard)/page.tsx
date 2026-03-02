@@ -1,6 +1,14 @@
-import { Activity, FolderGit2, Rocket, Timer } from "lucide-react"
+"use client"
+
+import { Activity, FolderGit2, Rocket, Server, Timer } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { usePoolStats } from "@/hooks/use-pool-stats"
+import { AnimatedPage } from "@/components/animated-page"
+import { AnimatedList, AnimatedListItem } from "@/components/animated-list"
 
 export default function Home() {
+  const { poolStats, isLoading: loadingPool } = usePoolStats()
+
   const stats = [
     { label: "Projects", value: "3", icon: FolderGit2, sub: "2 active" },
     { label: "Deployments", value: "12", icon: Rocket, sub: "1 building" },
@@ -17,7 +25,7 @@ export default function Home() {
   ]
 
   return (
-    <div className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-8 p-4 sm:p-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -25,18 +33,89 @@ export default function Home() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <AnimatedList className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <div key={stat.label} className="rounded-lg border bg-surface p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">{stat.label}</span>
-              <stat.icon className="size-4 text-muted-foreground/50" />
+          <AnimatedListItem key={stat.label}>
+            <div className="rounded-lg border bg-surface p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">{stat.label}</span>
+                <stat.icon className="size-4 text-muted-foreground/50" />
+              </div>
+              <p className="mt-2 text-2xl font-bold">{stat.value}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{stat.sub}</p>
             </div>
-            <p className="mt-2 text-2xl font-bold">{stat.value}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{stat.sub}</p>
-          </div>
+          </AnimatedListItem>
         ))}
-      </div>
+      </AnimatedList>
+
+      {/* Pool Stats - only shown when runtime mode is "pool" */}
+      {loadingPool ? (
+        <div>
+          <div className="mb-4 flex items-center gap-2 text-muted-foreground">
+            <Server className="size-4" />
+            <span className="text-sm font-medium">Pool Statistics</span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Skeleton className="h-24 rounded-lg" />
+            <Skeleton className="h-24 rounded-lg" />
+            <Skeleton className="h-24 rounded-lg" />
+          </div>
+        </div>
+      ) : poolStats?.mode === "pool" ? (
+        <div>
+          <div className="mb-4 flex items-center gap-2 text-muted-foreground">
+            <Server className="size-4" />
+            <span className="text-sm font-medium">Pool Statistics</span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-lg border bg-surface p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Warm Workers</span>
+                <Activity className="size-4 text-muted-foreground/50" />
+              </div>
+              <p className="mt-2 text-2xl font-bold">{poolStats.warm_workers}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Ready to serve</p>
+            </div>
+            <div className="rounded-lg border bg-surface p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Active Workers</span>
+                <Activity className="size-4 text-muted-foreground/50" />
+              </div>
+              <p className="mt-2 text-2xl font-bold">{poolStats.active_workers}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Processing requests</p>
+            </div>
+            <div className="rounded-lg border bg-surface p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Suspended Deployments</span>
+                <Server className="size-4 text-muted-foreground/50" />
+              </div>
+              <p className="mt-2 text-2xl font-bold">{poolStats.suspended_deployments}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Scaled to zero</p>
+            </div>
+          </div>
+          {/* Capacity bar */}
+          <div className="mt-4 rounded-lg border bg-surface p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Pool Capacity</span>
+              <span className="text-xs text-muted-foreground">
+                {poolStats.active_workers} / {poolStats.max_workers} workers
+              </span>
+            </div>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{
+                  width: `${poolStats.max_workers > 0 ? (poolStats.active_workers / poolStats.max_workers) * 100 : 0}%`,
+                }}
+              />
+            </div>
+            <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+              <span>{poolStats.active_workers} active</span>
+              <span>{poolStats.max_workers} max</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div>
         <h2 className="mb-4 text-sm font-medium text-muted-foreground">
@@ -80,6 +159,6 @@ export default function Home() {
           </table>
         </div>
       </div>
-    </div>
+    </AnimatedPage>
   )
 }

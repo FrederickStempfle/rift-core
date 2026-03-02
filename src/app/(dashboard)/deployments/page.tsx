@@ -1,3 +1,7 @@
+"use client"
+
+import { AnimatedPage } from "@/components/animated-page"
+
 export default function DeploymentsPage() {
   const deployments = [
     { id: "dep_a3f8c21", project: "marketing-site", commit: "a3f8c21", message: "Update hero section", branch: "main", status: "ready", duration: "42s", time: "2 min ago" },
@@ -9,7 +13,7 @@ export default function DeploymentsPage() {
   ]
 
   return (
-    <div className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-8 p-4 sm:p-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Deployments</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -56,6 +60,6 @@ export default function DeploymentsPage() {
           </tbody>
         </table>
       </div>
-    </div>
+    </AnimatedPage>
   )
 }

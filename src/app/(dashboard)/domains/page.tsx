@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   Plus,
   Loader2,
@@ -25,6 +25,9 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
+import { useDomains, useServerIp } from "@/hooks/use-domains"
+import { useProjects } from "@/hooks/use-projects"
+import { AnimatedPage } from "@/components/animated-page"
 
 type Domain = {
   id: string
@@ -713,45 +716,17 @@ function GroupedDomainList({
 // ---------------------------------------------------------------------------
 
 export default function DomainsPage() {
-  const [domains, setDomains] = useState<Domain[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { domains, isLoading: loading, error: domainsError, mutate: mutateDomains } = useDomains()
+  const { projects } = useProjects()
+  const serverIp = useServerIp()
   const [addOpen, setAddOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Domain | null>(null)
   const [assignTarget, setAssignTarget] = useState<Domain | null>(null)
-  const [serverIp, setServerIp] = useState<string | null>(null)
 
-  const fetchDomains = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [domainsRes, projectsRes, ipRes] = await Promise.all([
-        fetch("/api/domains"),
-        fetch("/api/projects"),
-        serverIp ? null : fetch("/api/domains?serverIp=true"),
-      ])
-      if (!domainsRes.ok) throw new Error("Failed to fetch domains")
-      setDomains(await domainsRes.json())
-      if (!projectsRes.ok) throw new Error("Failed to fetch projects")
-      setProjects(await projectsRes.json())
-      if (ipRes) {
-        const ipData = await ipRes.json()
-        setServerIp(ipData.ip)
-      }
-    } catch {
-      setError("Could not load domains")
-    } finally {
-      setLoading(false)
-    }
-  }, [serverIp])
-
-  useEffect(() => {
-    fetchDomains()
-  }, [fetchDomains])
+  const error = domainsError ? "Could not load domains" : null
 
   return (
-    <div className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-8 p-4 sm:p-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Domains</h1>
@@ -781,7 +756,7 @@ export default function DomainsPage() {
       ) : error ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
           <p className="text-sm text-muted-foreground">{error}</p>
-          <button onClick={fetchDomains} className="mt-2 text-xs text-primary hover:underline">
+          <button onClick={() => void mutateDomains()} className="mt-2 text-xs text-primary hover:underline">
             Retry
           </button>
         </div>
@@ -805,7 +780,7 @@ export default function DomainsPage() {
           serverIp={serverIp}
           projects={projects}
           onDelete={(d) => setDeleteTarget(d)}
-          onRefresh={fetchDomains}
+          onRefresh={() => void mutateDomains()}
           onAssign={(d) => setAssignTarget(d)}
         />
       )}
@@ -813,20 +788,20 @@ export default function DomainsPage() {
       <AddDomainDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        onCreated={fetchDomains}
+        onCreated={() => void mutateDomains()}
         serverIp={serverIp}
       />
       <DeleteDomainDialog
         domain={deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        onDeleted={fetchDomains}
+        onDeleted={() => void mutateDomains()}
       />
       <AssignDomainDialog
         domain={assignTarget}
         projects={projects}
         onOpenChange={(open) => !open && setAssignTarget(null)}
-        onAssigned={fetchDomains}
+        onAssigned={() => void mutateDomains()}
       />
-    </div>
+    </AnimatedPage>
   )
 }

@@ -17,5 +17,8 @@ declare module "next-auth/jwt" {
     login: string
     avatar_url: string
     accessToken: string
+    refreshToken?: string
+    accessTokenExpires?: number
+    error?: string
   }
 }
