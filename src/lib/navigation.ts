@@ -120,6 +120,9 @@ export const navigationGroups: NavGroup[] = [
         url: "/settings",
         subItems: [
           { title: "General", url: "/settings/general" },
+          { title: "Runtime", url: "/settings/runtime" },
+          { title: "Security", url: "/settings/security" },
+          { title: "Build", url: "/settings/build" },
           { title: "API Keys", url: "/settings/api-keys" },
         ],
       },
