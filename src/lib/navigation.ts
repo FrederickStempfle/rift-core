@@ -109,6 +109,7 @@ export const navigationGroups: NavGroup[] = [
         icon: ScrollText,
         url: "/logs",
         subItems: [
+          { title: "Access Logs", url: "/logs/access" },
           { title: "Build Logs", url: "/logs/build" },
           { title: "Runtime Logs", url: "/logs/runtime" },
         ],
