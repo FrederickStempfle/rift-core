@@ -205,18 +205,6 @@ function WafPolicySection() {
     }
   }
 
-  const modeIcon = {
-    active: ShieldCheck,
-    log_only: Shield,
-    disabled: ShieldOff,
-  }[policy.mode] ?? Shield
-
-  const modeColor = {
-    active: "text-emerald-600",
-    log_only: "text-amber-600",
-    disabled: "text-muted-foreground",
-  }[policy.mode]
-
   return (
     <section className="overflow-hidden rounded-lg border">
       <div className="flex items-center gap-3 border-b bg-muted/30 px-5 py-3.5">

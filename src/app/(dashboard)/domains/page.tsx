@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import Link from "next/link"
 import {
   Plus,
   Loader2,
@@ -615,14 +616,12 @@ function DnsRow({ type, name, value }: { type: string; name: string; value: stri
 function GroupedDomainList({
   domains,
   serverIp,
-  projects,
   onDelete,
   onRefresh,
   onAssign,
 }: {
   domains: Domain[]
   serverIp: string | null
-  projects: Project[]
   onDelete: (d: Domain) => void
   onRefresh: () => void
   onAssign: (d: Domain) => void
@@ -686,12 +685,12 @@ function GroupedDomainList({
         <div key={projectId} className="space-y-2">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-medium">{group.projectName}</h3>
-            <a
+            <Link
               href={`/projects/${encodeURIComponent(group.projectName)}`}
               className="text-xs text-primary hover:underline"
             >
               View project
-            </a>
+            </Link>
           </div>
           <div className="space-y-2">
             {group.domains.map((d) => (
@@ -778,7 +777,6 @@ export default function DomainsPage() {
         <GroupedDomainList
           domains={domains}
           serverIp={serverIp}
-          projects={projects}
           onDelete={(d) => setDeleteTarget(d)}
           onRefresh={() => void mutateDomains()}
           onAssign={(d) => setAssignTarget(d)}

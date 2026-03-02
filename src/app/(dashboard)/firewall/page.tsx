@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import useSWR from "swr"
-import { Check, Copy, Loader2, Plus, Shield, Trash2 } from "lucide-react"
+import { Loader2, Plus, Shield, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -16,11 +16,6 @@ import {
 import { toast } from "sonner"
 import { useProjects } from "@/hooks/use-projects"
 import { AnimatedPage } from "@/components/animated-page"
-
-type Project = {
-  id: string
-  name: string
-}
 
 type FirewallRule = {
   id: string
