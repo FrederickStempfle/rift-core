@@ -16,11 +16,22 @@ type UseDeployLogsOptions = {
   isActive: boolean
 }
 
+const WS_RECONNECT_BASE_DELAY_MS = 1_000
+const WS_RECONNECT_MAX_DELAY_MS = 10_000
+const WS_POLL_INTERVAL_MS = 1_500
+
+function wsOriginFromHttpOrigin(origin: string): string {
+  if (origin.startsWith("https://")) return `wss://${origin.slice("https://".length)}`
+  if (origin.startsWith("http://")) return `ws://${origin.slice("http://".length)}`
+  return origin
+}
+
 export function useDeployLogs({ deploymentId, isActive }: UseDeployLogsOptions) {
   const [logs, setLogs] = useState<DeployLog[]>([])
   const [connected, setConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const seenIdsRef = useRef(new Set<number>())
+  const previousDeploymentIdRef = useRef<string | null>(null)
 
   const fetchLogsHttp = useCallback(async () => {
     if (!deploymentId) return
@@ -40,85 +51,180 @@ export function useDeployLogs({ deploymentId, isActive }: UseDeployLogsOptions) 
   }, [deploymentId])
 
   useEffect(() => {
-    if (!deploymentId || !isActive) {
-      if (deploymentId) void fetchLogsHttp()
+    if (deploymentId === previousDeploymentIdRef.current) return
+    previousDeploymentIdRef.current = deploymentId
+    setLogs([])
+    seenIdsRef.current.clear()
+  }, [deploymentId])
+
+  useEffect(() => {
+    if (!deploymentId) {
+      setConnected(false)
+      wsRef.current?.close()
+      wsRef.current = null
       return
     }
 
-    let ws: WebSocket | null = null
+    if (!isActive) {
+      setConnected(false)
+      void fetchLogsHttp()
+      return
+    }
+
     let cancelled = false
+    let reconnectDelayMs = WS_RECONNECT_BASE_DELAY_MS
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
     let pollTimer: ReturnType<typeof setTimeout> | null = null
 
+    const clearReconnectTimer = () => {
+      if (!reconnectTimer) return
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+
+    const clearPollTimer = () => {
+      if (!pollTimer) return
+      clearTimeout(pollTimer)
+      pollTimer = null
+    }
+
+    const startPolling = () => {
+      if (cancelled || pollTimer) return
+
+      const pollOnce = async () => {
+        if (cancelled) return
+        await fetchLogsHttp()
+        if (cancelled) return
+        pollTimer = setTimeout(() => {
+          pollTimer = null
+          void pollOnce()
+        }, WS_POLL_INTERVAL_MS)
+      }
+
+      void pollOnce()
+    }
+
+    const scheduleReconnect = () => {
+      if (cancelled || reconnectTimer) return
+
+      const waitMs = reconnectDelayMs
+      reconnectDelayMs = Math.min(reconnectDelayMs * 2, WS_RECONNECT_MAX_DELAY_MS)
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null
+        void connect()
+      }, waitMs)
+    }
+
+    const buildCandidateUrls = (token: string): string[] => {
+      const query = `token=${encodeURIComponent(token)}&deployment_id=${encodeURIComponent(deploymentId)}`
+      const candidates: string[] = []
+      const seen = new Set<string>()
+
+      const add = (base: string) => {
+        const normalized = base.trim().replace(/\/+$/, "")
+        if (!normalized) return
+        const full = `${normalized}/api/ws/logs?${query}`
+        if (seen.has(full)) return
+        seen.add(full)
+        candidates.push(full)
+      }
+
+      // Preferred: same-origin websocket path. Next rewrites this to the engine.
+      add(wsOriginFromHttpOrigin(window.location.origin))
+
+      // Legacy fallback: connect to engine API port directly.
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
+      const host = window.location.hostname
+      const enginePort = process.env.NEXT_PUBLIC_RIFT_ENGINE_PORT ?? "3001"
+      add(`${proto}//${host}:${enginePort}`)
+
+      return candidates
+    }
+
     async function connect() {
+      if (cancelled) return
+
       try {
+        setConnected(false)
+        startPolling()
+
         const tokenRes = await fetch("/api/ws-token")
         if (!tokenRes.ok) throw new Error("Failed to get token")
         const { token } = await tokenRes.json()
 
         if (cancelled) return
 
-        // Derive the engine WS URL from the current page host.
-        // The engine runs on port 3001 on the same machine.
-        const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
-        const host = window.location.hostname
-        const enginePort = process.env.NEXT_PUBLIC_RIFT_ENGINE_PORT ?? "3001"
-        const wsUrl = `${proto}//${host}:${enginePort}`
-        const url = `${wsUrl}/api/ws/logs?token=${encodeURIComponent(token)}&deployment_id=${encodeURIComponent(deploymentId!)}`
+        const urls = buildCandidateUrls(token)
 
-        ws = new WebSocket(url)
-        wsRef.current = ws
-
-        ws.onopen = () => {
-          if (!cancelled) setConnected(true)
-        }
-
-        ws.onmessage = (event) => {
-          try {
-            const log = JSON.parse(event.data as string) as DeployLog
-            if (!seenIdsRef.current.has(log.id)) {
-              seenIdsRef.current.add(log.id)
-              setLogs((prev) => [...prev, log])
-            }
-          } catch {
-            // ignore malformed messages
+        const tryCandidate = (index: number) => {
+          if (cancelled) return
+          if (index >= urls.length) {
+            scheduleReconnect()
+            return
           }
-        }
 
-        ws.onclose = () => {
-          if (!cancelled) {
-            setConnected(false)
-            // Fall back to continuous polling if still active
-            function poll() {
-              if (cancelled) return
-              void fetchLogsHttp()
-              pollTimer = setTimeout(poll, 3000)
+          const socket = new WebSocket(urls[index])
+          let opened = false
+          wsRef.current = socket
+
+          socket.onopen = () => {
+            if (cancelled) {
+              socket.close()
+              return
             }
-            pollTimer = setTimeout(poll, 1000)
+            opened = true
+            reconnectDelayMs = WS_RECONNECT_BASE_DELAY_MS
+            setConnected(true)
+            clearPollTimer()
           }
-        }
 
-        ws.onerror = () => {
-          ws?.close()
-        }
-      } catch {
-        // WS connection failed, fall back to continuous HTTP polling
-        if (!cancelled) {
-          function poll() {
+          socket.onmessage = (event) => {
+            try {
+              const log = JSON.parse(event.data as string) as DeployLog
+              if (!seenIdsRef.current.has(log.id)) {
+                seenIdsRef.current.add(log.id)
+                setLogs((prev) => [...prev, log])
+              }
+            } catch {
+              // ignore malformed messages
+            }
+          }
+
+          socket.onclose = () => {
+            if (wsRef.current === socket) wsRef.current = null
             if (cancelled) return
-            void fetchLogsHttp()
-            pollTimer = setTimeout(poll, 3000)
+            setConnected(false)
+            startPolling()
+            if (!opened) {
+              tryCandidate(index + 1)
+              return
+            }
+            scheduleReconnect()
           }
-          poll()
+
+          socket.onerror = () => {
+            socket.close()
+          }
         }
+
+        tryCandidate(0)
+      } catch {
+        if (cancelled) return
+        setConnected(false)
+        startPolling()
+        scheduleReconnect()
       }
     }
 
+    // Seed history immediately while WS comes up.
+    void fetchLogsHttp()
     void connect()
 
     return () => {
       cancelled = true
-      if (pollTimer) clearTimeout(pollTimer)
-      ws?.close()
+      clearReconnectTimer()
+      clearPollTimer()
+      wsRef.current?.close()
       wsRef.current = null
       setConnected(false)
     }
