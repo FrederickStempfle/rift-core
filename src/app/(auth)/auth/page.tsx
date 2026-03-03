@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { Home, Eye, EyeOff, ArrowLeft, Mail, Check } from "lucide-react"
+import { Home, Eye, EyeOff, ArrowLeft, Mail } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -224,13 +225,19 @@ function AuthPageInner() {
 
                 <p className="text-center text-xs text-muted-foreground">
                   By continuing, you agree to our{" "}
-                  <a href="/terms" className="underline underline-offset-4 hover:text-foreground transition-colors">
+                  <Link
+                    href="/terms"
+                    className="underline underline-offset-4 hover:text-foreground transition-colors"
+                  >
                     Terms of Service
-                  </a>{" "}
+                  </Link>{" "}
                   and{" "}
-                  <a href="/privacy" className="underline underline-offset-4 hover:text-foreground transition-colors">
+                  <Link
+                    href="/privacy"
+                    className="underline underline-offset-4 hover:text-foreground transition-colors"
+                  >
                     Privacy Policy
-                  </a>
+                  </Link>
                   .
                 </p>
               </>

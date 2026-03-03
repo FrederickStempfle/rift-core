@@ -84,41 +84,6 @@ type Deployment = {
   created_at: string
 }
 
-type DeployLog = {
-  id: number
-  deployment_id: string
-  timestamp: string
-  level: string
-  message: string
-  source: string
-}
-
-type Domain = {
-  id: string
-  projectId: string | null
-  domain: string
-  isPrimary: boolean
-  verified: boolean
-  sslStatus: "pending" | "provisioning" | "active" | "failed"
-}
-
-type AnalyticsBucket = {
-  bucket: string
-  requests: number
-  errors: number
-  avg_ms: number
-  cold_starts: number
-}
-
-type AnalyticsData = {
-  buckets: AnalyticsBucket[]
-  total_requests: number
-  total_errors: number
-  avg_response_ms: number
-  error_rate: number
-  total_cold_starts: number
-}
-
 const ANALYTICS_PERIODS = [
   { label: "24h", value: "24h" },
   { label: "7d", value: "7d" },
@@ -138,24 +103,6 @@ type EnvVar = {
   project_id: string
   key: string
   preview: string
-}
-
-type RuntimeStatus = {
-  status: "active" | "suspended" | "stopped"
-  deployment_id: string | null
-  url: string | null
-  runtime_mode: string
-}
-
-type RuntimeStats = {
-  mode: string
-  pool: {
-    warm_workers: number
-    active_workers: number
-    suspended_deployments: number
-    max_active: number
-    warm_target: number
-  } | null
 }
 
 type Tab = "overview" | "analytics" | "env" | "logs" | "domains" | "usage" | "settings"
@@ -317,7 +264,7 @@ function DeleteProjectDialog({
 // Deployment Row
 // ---------------------------------------------------------------------------
 
-function DeploymentRow({ deployment, isLatest }: { deployment: Deployment; isLatest: boolean }) {
+function DeploymentRow({ deployment }: { deployment: Deployment }) {
   const isActive = ACTIVE_DEPLOYMENT_STATUSES.has(deployment.status)
 
   return (
@@ -1504,8 +1451,8 @@ export default function ProjectDetailPage() {
                 </div>
               ) : (
                 <div>
-                  {deployments.map((d, i) => (
-                    <DeploymentRow key={d.id} deployment={d} isLatest={i === 0} />
+                  {deployments.map((d) => (
+                    <DeploymentRow key={d.id} deployment={d} />
                   ))}
                 </div>
               )}

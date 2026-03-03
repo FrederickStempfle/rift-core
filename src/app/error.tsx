@@ -1,14 +1,21 @@
 "use client"
 
-import { RotateCcw, Home, ArrowLeft } from "lucide-react"
+import { useEffect } from "react"
+import Link from "next/link"
+import { RotateCcw, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export default function Error({
+  error,
   reset,
 }: {
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  useEffect(() => {
+    console.error(error)
+  }, [error])
+
   return (
     <div className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden px-6">
       <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px]" />
@@ -41,7 +48,7 @@ export default function Error({
             Oops! Something went wrong
           </h1>
           <p className="text-base text-muted-foreground sm:text-lg">
-            We encountered an unexpected error. Don't worry, it's not your fault.
+            We encountered an unexpected error. Don&apos;t worry, it&apos;s not your fault.
             Try refreshing the page or head back to continue.
           </p>
         </div>
@@ -52,10 +59,10 @@ export default function Error({
             Try again
           </Button>
           <Button asChild variant="outline" size="lg" className="gap-2">
-            <a href="/">
+            <Link href="/">
               <ArrowLeft className="size-4" />
               Go back home
-            </a>
+            </Link>
           </Button>
         </div>
 

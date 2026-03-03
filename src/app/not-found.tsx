@@ -1,6 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Home, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -20,10 +21,10 @@ export default function NotFound() {
           Go back
         </Button>
         <Button variant="outline" size="sm" asChild>
-          <a href="/">
+          <Link href="/">
             <Home className="size-3.5" />
             Dashboard
-          </a>
+          </Link>
         </Button>
       </div>
     </div>

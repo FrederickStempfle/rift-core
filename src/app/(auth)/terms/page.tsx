@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { Home } from "lucide-react"
 
 export default function TermsOfService() {
@@ -5,15 +6,18 @@ export default function TermsOfService() {
     <div className="min-h-svh">
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-6">
-          <a href="/" className="flex items-center gap-2.5">
+          <Link href="/" className="flex items-center gap-2.5">
             <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <Home className="size-3.5" />
             </div>
             <span className="text-sm font-semibold">Acme Inc</span>
-          </a>
-          <a href="/auth" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+          </Link>
+          <Link
+            href="/auth"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
             Back to sign in
-          </a>
+          </Link>
         </div>
       </header>
 

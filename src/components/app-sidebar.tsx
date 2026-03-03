@@ -8,6 +8,7 @@ import {
   LogOut,
   Rocket,
 } from "lucide-react"
+import Link from "next/link"
 import { signOut, useSession } from "next-auth/react"
 
 import {
@@ -89,9 +90,9 @@ function NavGroup({
                       {item.subItems.map((sub) => (
                         <SidebarMenuSubItem key={sub.title}>
                           <SidebarMenuSubButton asChild isActive={pathname === sub.url}>
-                            <a href={sub.url}>
+                            <Link href={sub.url}>
                               <span>{sub.title}</span>
-                            </a>
+                            </Link>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                       ))}
@@ -120,7 +121,7 @@ export function AppSidebar() {
     .toUpperCase()
     .slice(0, 2)
 
-  const { getGroupOpen, setGroupOpen, scrollTop, setScrollTop } = useSidebarState()
+  const { getGroupOpen, setGroupOpen, setScrollTop } = useSidebarState()
   const contentRef = React.useRef<HTMLDivElement>(null)
 
   // Restore scroll position before paint — read localStorage directly
@@ -166,14 +167,14 @@ export function AppSidebar() {
         <SidebarMenu className="group-data-[collapsible=icon]:hidden">
           <SidebarMenuItem>
             <SidebarMenuButton className="h-8" asChild>
-              <a href="/">
+              <Link href="/">
                 <div className="flex aspect-square size-6 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
                   <Rocket className="size-3.5" />
                 </div>
                 <div className="flex flex-col leading-none">
                   <span className="text-sm font-semibold">Rift</span>
                 </div>
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -235,10 +236,10 @@ export function AppSidebar() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <a href="/settings">
+                  <Link href="/settings">
                     <BadgeCheck className="mr-2 size-4" />
                     Settings
-                  </a>
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
