@@ -245,171 +245,130 @@ function getEndpoints(connectionInfo: NonNullable<ReturnType<typeof useService>[
   return endpoints
 }
 
-function AddServiceDomainDialog({
+function AssignServiceDomainDialog({
   open,
   onOpenChange,
-  onCreated,
+  onAssigned,
   serviceId,
   endpoints,
-  serverIp,
+  assignedDomainIds,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreated: () => void
+  onAssigned: () => void
   serviceId: string
   endpoints: Endpoint[]
-  serverIp: string | null
+  assignedDomainIds: Set<string>
 }) {
-  const [step, setStep] = useState<"input" | "dns">("input")
-  const [domain, setDomain] = useState("")
+  const { domains: allDomains } = useDomains()
+  const [selectedDomainId, setSelectedDomainId] = useState("")
   const [selectedEndpoint, setSelectedEndpoint] = useState(0)
-  const [submitting, setSubmitting] = useState(false)
-  const [createdDomain, setCreatedDomain] = useState("")
+  const [assigning, setAssigning] = useState(false)
+
+  // Show domains that are unassigned (no project, no service) or not already assigned to this service
+  const availableDomains = allDomains.filter(
+    (d) => !d.projectId && !d.serviceId && !assignedDomainIds.has(d.id)
+  )
 
   useEffect(() => {
     if (!open) {
-      setDomain("")
-      setStep("input")
-      setCreatedDomain("")
+      setSelectedDomainId("")
       setSelectedEndpoint(0)
     }
   }, [open])
 
-  const isValid =
-    domain.length > 0 &&
-    /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(domain)
-
-  async function handleSubmit() {
-    if (!isValid || endpoints.length === 0) return
-    setSubmitting(true)
+  async function handleAssign() {
+    if (!selectedDomainId || endpoints.length === 0) return
+    setAssigning(true)
     try {
-      // 1. Create domain
-      const createRes = await fetch("/api/domains", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain, isPrimary: false }),
-      })
-      if (!createRes.ok) {
-        const data = await createRes.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to add domain")
-      }
-      const created = await createRes.json()
-
-      // 2. Assign to service with target_url
-      const assignRes = await fetch("/api/domains", {
+      const res = await fetch("/api/domains", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          domainId: created.id,
+          domainId: selectedDomainId,
           action: "assign",
           serviceId,
           targetUrl: endpoints[selectedEndpoint].targetUrl,
         }),
       })
-      if (!assignRes.ok) {
-        const data = await assignRes.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to assign domain to service")
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to assign domain")
       }
-
-      setCreatedDomain(domain)
-      setStep("dns")
-      onCreated()
+      toast.success("Domain assigned to service")
+      onAssigned()
+      onOpenChange(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong")
     } finally {
-      setSubmitting(false)
+      setAssigning(false)
     }
-  }
-
-  const getDnsName = (d: string) => {
-    const parts = d.split(".")
-    return parts.length > 2 ? parts[0] : "@"
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg gap-0 p-0 overflow-hidden">
+      <DialogContent className="sm:max-w-sm gap-0 p-0 overflow-hidden">
         <DialogHeader className="p-6 pb-4">
-          <DialogTitle>{step === "input" ? "Add Domain" : "Configure DNS"}</DialogTitle>
+          <DialogTitle>Assign Domain</DialogTitle>
           <DialogDescription>
-            {step === "input"
-              ? "Add a custom domain to access your service endpoint."
-              : `Add an A record at your DNS provider to verify ${createdDomain}.`}
+            Assign an existing domain to this service endpoint.
           </DialogDescription>
         </DialogHeader>
-
-        {step === "input" ? (
-          <div className="px-6 space-y-4 pb-6">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Domain</label>
-              <Input
-                placeholder="api.example.com"
-                value={domain}
-                onChange={(e) => setDomain(e.target.value.toLowerCase().trim())}
-                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                autoFocus
-              />
-              {domain.length > 0 && !isValid && (
-                <p className="text-xs text-destructive">Enter a valid domain name</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Endpoint</label>
+        <div className="px-6 pb-6 space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Domain</label>
+            {availableDomains.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No unassigned domains available. Add a domain first from the{" "}
+                <a href="/domains" className="text-primary hover:underline">Domains</a> page.
+              </p>
+            ) : (
               <select
                 className="flex h-9 w-full rounded-md border bg-background px-3 text-sm outline-none"
-                value={selectedEndpoint}
-                onChange={(e) => setSelectedEndpoint(Number(e.target.value))}
+                value={selectedDomainId}
+                onChange={(e) => setSelectedDomainId(e.target.value)}
               >
-                {endpoints.map((ep, i) => (
-                  <option key={i} value={i}>
-                    {ep.label}
+                <option value="">Select a domain</option>
+                {availableDomains.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.domain}
+                    {d.verified ? "" : " (pending verification)"}
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-muted-foreground">
-                Routes to {endpoints[selectedEndpoint]?.targetUrl}
-              </p>
-            </div>
-            <Button className="w-full" disabled={!isValid || submitting} onClick={handleSubmit}>
-              {submitting && <Loader2 className="size-3.5 animate-spin" />}
-              Add Domain
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Endpoint</label>
+            <select
+              className="flex h-9 w-full rounded-md border bg-background px-3 text-sm outline-none"
+              value={selectedEndpoint}
+              onChange={(e) => setSelectedEndpoint(Number(e.target.value))}
+            >
+              {endpoints.map((ep, i) => (
+                <option key={i} value={i}>
+                  {ep.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Routes to {endpoints[selectedEndpoint]?.targetUrl}
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={!selectedDomainId || assigning}
+              onClick={handleAssign}
+            >
+              {assigning && <Loader2 className="size-3.5 animate-spin" />}
+              Assign
             </Button>
           </div>
-        ) : (
-          <div className="px-6 space-y-4 pb-6">
-            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-              <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase">
-                A Record
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Name
-                  </span>
-                  <code className="block truncate rounded bg-background px-2 py-1 font-mono text-xs border">
-                    {getDnsName(createdDomain)}
-                  </code>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Value
-                  </span>
-                  <code className="block truncate rounded bg-background px-2 py-1 font-mono text-xs border">
-                    {serverIp ?? "…"}
-                  </code>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                DNS changes can take up to 48 hours to propagate. Once added, use the Verify button to check.
-              </p>
-            </div>
-            <Button className="w-full" onClick={() => onOpenChange(false)}>
-              Done
-            </Button>
-          </div>
-        )}
+        </div>
       </DialogContent>
     </Dialog>
   )
@@ -487,7 +446,7 @@ function ServiceDomainsTab({
           disabled={endpoints.length === 0}
         >
           <Plus className="size-3.5" />
-          Add Domain
+          Assign Domain
         </Button>
       </div>
 
@@ -503,7 +462,9 @@ function ServiceDomainsTab({
         <div className="rounded-lg border bg-muted/30 px-5 py-8 text-center">
           <Globe className="mx-auto size-8 text-muted-foreground/50" />
           <p className="mt-2 text-sm text-muted-foreground">
-            No custom domains configured. Add one to access your service via HTTPS.
+            No domains assigned. Add a domain from the{" "}
+            <a href="/domains" className="text-primary hover:underline">Domains</a>{" "}
+            page, then assign it here.
           </p>
         </div>
       )}
@@ -579,13 +540,13 @@ function ServiceDomainsTab({
         </div>
       )}
 
-      <AddServiceDomainDialog
+      <AssignServiceDomainDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        onCreated={() => mutate()}
+        onAssigned={() => mutate()}
         serviceId={serviceId}
         endpoints={endpoints}
-        serverIp={serverIp}
+        assignedDomainIds={new Set(domains.map((d) => d.id))}
       />
     </div>
   )
