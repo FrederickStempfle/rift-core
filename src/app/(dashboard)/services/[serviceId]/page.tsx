@@ -225,22 +225,19 @@ type Endpoint = { label: string; targetUrl: string }
 function getEndpoints(connectionInfo: NonNullable<ReturnType<typeof useService>["service"]>["connection_info"]): Endpoint[] {
   if (!connectionInfo) return []
   const endpoints: Endpoint[] = []
-  if (connectionInfo.api_url) {
-    // Convert public URL to internal localhost URL for proxying
-    try {
-      const url = new URL(connectionInfo.api_url)
-      endpoints.push({ label: "API Gateway (Kong)", targetUrl: `http://localhost:${url.port || "8000"}` })
-    } catch {
-      endpoints.push({ label: "API Gateway (Kong)", targetUrl: connectionInfo.api_url })
-    }
+  // Prefer internal Docker network URLs (reachable from the engine container).
+  // Fall back to localhost URLs for dev environments.
+  if (connectionInfo.internal_api_url || connectionInfo.api_url) {
+    endpoints.push({
+      label: "API Gateway (Kong)",
+      targetUrl: connectionInfo.internal_api_url ?? connectionInfo.api_url!,
+    })
   }
-  if (connectionInfo.studio_url) {
-    try {
-      const url = new URL(connectionInfo.studio_url)
-      endpoints.push({ label: "Studio Dashboard", targetUrl: `http://localhost:${url.port || "3400"}` })
-    } catch {
-      endpoints.push({ label: "Studio Dashboard", targetUrl: connectionInfo.studio_url })
-    }
+  if (connectionInfo.internal_studio_url || connectionInfo.studio_url) {
+    endpoints.push({
+      label: "Studio Dashboard",
+      targetUrl: connectionInfo.internal_studio_url ?? connectionInfo.studio_url!,
+    })
   }
   return endpoints
 }
@@ -352,7 +349,7 @@ function AssignServiceDomainDialog({
               ))}
             </select>
             <p className="text-xs text-muted-foreground">
-              Routes to {endpoints[selectedEndpoint]?.targetUrl}
+              Routes traffic to the {endpoints[selectedEndpoint]?.label.toLowerCase()}
             </p>
           </div>
           <div className="flex gap-3">

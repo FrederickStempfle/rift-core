@@ -11,10 +11,12 @@ export type Service = {
   status: string
   connection_info: {
     api_url?: string
+    studio_url?: string
+    internal_api_url?: string
+    internal_studio_url?: string
     anon_key?: string
     service_role_key?: string
     db_connection_string?: string
-    studio_url?: string
   } | null
   error_message: string | null
   started_at: string | null
