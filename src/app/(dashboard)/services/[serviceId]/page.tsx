@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import {
   ArrowLeft,
+  BarChart3,
   Check,
   CircleStop,
   Copy,
@@ -222,6 +223,11 @@ function LogViewer({ serviceId, isActive }: { serviceId: string; isActive: boole
 
 type Endpoint = { label: string; targetUrl: string }
 
+function getServiceIcon(serviceType: string) {
+  if (serviceType === "posthog") return { Icon: BarChart3, color: "text-blue-600" }
+  return { Icon: Database, color: "text-emerald-600" }
+}
+
 function getEndpoints(connectionInfo: NonNullable<ReturnType<typeof useService>["service"]>["connection_info"]): Endpoint[] {
   if (!connectionInfo) return []
   const endpoints: Endpoint[] = []
@@ -237,6 +243,13 @@ function getEndpoints(connectionInfo: NonNullable<ReturnType<typeof useService>[
     endpoints.push({
       label: "Studio Dashboard",
       targetUrl: connectionInfo.internal_studio_url ?? connectionInfo.studio_url!,
+    })
+  }
+  // PostHog
+  if (connectionInfo.internal_app_url || connectionInfo.app_url) {
+    endpoints.push({
+      label: "PostHog App",
+      targetUrl: connectionInfo.internal_app_url ?? connectionInfo.app_url!,
     })
   }
   return endpoints
@@ -560,6 +573,7 @@ export default function ServiceDetailPage() {
   const activeTab = (searchParams.get("tab") as Tab) || "overview"
   const isActive = service ? ACTIVE_STATUSES.has(service.status) : false
   const style = STATUS_STYLES[service?.status ?? ""] ?? STATUS_STYLES.stopped
+  const { Icon: ServiceIcon, color: serviceIconColor } = getServiceIcon(service?.service_type ?? "")
 
   function setTab(tab: Tab) {
     const newParams = new URLSearchParams(searchParams.toString())
@@ -624,7 +638,7 @@ export default function ServiceDetailPage() {
             <ArrowLeft className="size-4" />
           </button>
           <div className="flex size-9 items-center justify-center rounded-lg border bg-background">
-            <Database className="size-4 text-emerald-600" />
+            <ServiceIcon className={`size-4 ${serviceIconColor}`} />
           </div>
           <div>
             <h1 className="text-lg font-semibold">{service.name}</h1>
@@ -758,22 +772,24 @@ export default function ServiceDetailPage() {
             </div>
           </section>
 
-          {service.connection_info?.studio_url && (
+          {(service.connection_info?.studio_url || service.connection_info?.app_url) && (
             <section className="rounded-lg border">
               <div className="border-b bg-muted/30 px-5 py-3.5">
                 <h2 className="text-sm font-semibold">Quick Links</h2>
               </div>
               <div className="px-5 py-4 space-y-3">
-                <a
-                  href={service.connection_info.studio_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-primary hover:underline"
-                >
-                  <Database className="size-3.5" />
-                  Open Supabase Studio
-                </a>
-                {service.connection_info.api_url && (
+                {service.service_type === "supabase" && service.connection_info?.studio_url && (
+                  <a
+                    href={service.connection_info.studio_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-sm text-primary hover:underline"
+                  >
+                    <Database className="size-3.5" />
+                    Open Supabase Studio
+                  </a>
+                )}
+                {service.service_type === "supabase" && service.connection_info?.api_url && (
                   <a
                     href={service.connection_info.api_url}
                     target="_blank"
@@ -782,6 +798,17 @@ export default function ServiceDetailPage() {
                   >
                     <Database className="size-3.5" />
                     API Endpoint
+                  </a>
+                )}
+                {service.service_type === "posthog" && service.connection_info?.app_url && (
+                  <a
+                    href={service.connection_info.app_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-sm text-primary hover:underline"
+                  >
+                    <BarChart3 className="size-3.5" />
+                    Open PostHog
                   </a>
                 )}
               </div>
@@ -795,29 +822,36 @@ export default function ServiceDetailPage() {
           <div className="border-b bg-muted/30 px-5 py-3.5">
             <h2 className="text-sm font-semibold">Connection Details</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Use these credentials to connect your applications to Supabase.
+              Use these credentials to connect your applications to {service.service_type === "posthog" ? "PostHog" : "Supabase"}.
             </p>
           </div>
           {service.connection_info ? (
             <div className="divide-y">
-              <CopyableField label="API URL" value={service.connection_info.api_url} />
-              <CopyableField
-                label="Anon Key"
-                value={service.connection_info.anon_key}
-                masked
-              />
-              <CopyableField
-                label="Service Role Key"
-                value={service.connection_info.service_role_key}
-                masked
-              />
-              <CopyableField
-                label="Database Connection String"
-                value={service.connection_info.db_connection_string}
-                masked
-              />
-              {service.connection_info.studio_url && (
-                <CopyableField label="Studio URL" value={service.connection_info.studio_url} />
+              {service.service_type === "supabase" && (
+                <>
+                  <CopyableField label="API URL" value={service.connection_info.api_url} />
+                  <CopyableField
+                    label="Anon Key"
+                    value={service.connection_info.anon_key}
+                    masked
+                  />
+                  <CopyableField
+                    label="Service Role Key"
+                    value={service.connection_info.service_role_key}
+                    masked
+                  />
+                  <CopyableField
+                    label="Database Connection String"
+                    value={service.connection_info.db_connection_string}
+                    masked
+                  />
+                  {service.connection_info.studio_url && (
+                    <CopyableField label="Studio URL" value={service.connection_info.studio_url} />
+                  )}
+                </>
+              )}
+              {service.service_type === "posthog" && (
+                <CopyableField label="App URL" value={service.connection_info.app_url} />
               )}
             </div>
           ) : (

@@ -10,6 +10,7 @@ export type Service = {
   name: string
   status: string
   connection_info: {
+    // Supabase
     api_url?: string
     studio_url?: string
     internal_api_url?: string
@@ -17,6 +18,9 @@ export type Service = {
     anon_key?: string
     service_role_key?: string
     db_connection_string?: string
+    // PostHog
+    app_url?: string
+    internal_app_url?: string
   } | null
   error_message: string | null
   started_at: string | null

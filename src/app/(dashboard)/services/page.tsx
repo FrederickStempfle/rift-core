@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Blocks, Database, Loader2, Plus } from "lucide-react"
+import { BarChart3, Blocks, Database, Loader2, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useServices, type Service } from "@/hooks/use-services"
 import { AnimatedPage } from "@/components/animated-page"
@@ -26,6 +26,23 @@ const STATUS_STYLES: Record<string, { dot: string; label: string }> = {
   removing: { dot: "bg-gray-400 animate-pulse", label: "Removing" },
 }
 
+const SERVICE_CATALOG = [
+  {
+    type: "supabase",
+    name: "Supabase",
+    description: "Open-source Firebase alternative. Includes PostgreSQL, Auth, REST API, Realtime, Storage, and Studio dashboard.",
+    icon: Database,
+    iconColor: "text-emerald-600",
+  },
+  {
+    type: "posthog",
+    name: "PostHog",
+    description: "Open-source product analytics. Track events, funnels, session recordings, and feature flags.",
+    icon: BarChart3,
+    iconColor: "text-blue-600",
+  },
+] as const
+
 function DeployServiceDialog({
   open,
   onOpenChange,
@@ -34,15 +51,15 @@ function DeployServiceDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const router = useRouter()
-  const [deploying, setDeploying] = useState(false)
+  const [deploying, setDeploying] = useState<string | null>(null)
 
-  async function handleDeploy() {
-    setDeploying(true)
+  async function handleDeploy(serviceType: string, serviceName: string) {
+    setDeploying(serviceType)
     try {
       const response = await fetch("/api/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ service_type: "supabase" }),
+        body: JSON.stringify({ service_type: serviceType }),
       })
 
       const data = await response.json().catch(() => ({}))
@@ -51,13 +68,13 @@ function DeployServiceDialog({
         throw new Error(data.error || "Failed to deploy service")
       }
 
-      toast.success("Supabase deployment started")
+      toast.success(`${serviceName} deployment started`)
       onOpenChange(false)
       router.push(`/services/${data.id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to deploy service")
     } finally {
-      setDeploying(false)
+      setDeploying(null)
     }
   }
 
@@ -71,35 +88,48 @@ function DeployServiceDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="px-6 pb-6 space-y-4">
-          <button
-            onClick={handleDeploy}
-            disabled={deploying}
-            className="flex w-full items-start gap-4 rounded-lg border p-4 text-left transition-colors hover:bg-muted/60 disabled:opacity-60"
-          >
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-background">
-              <Database className="size-5 text-emerald-600" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold">Supabase</span>
-                {deploying && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
-              </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Open-source Firebase alternative. Includes PostgreSQL, Auth, REST API, Realtime,
-                Storage, and Studio dashboard.
-              </p>
-            </div>
-          </button>
+        <div className="px-6 pb-6 space-y-3">
+          {SERVICE_CATALOG.map((svc) => {
+            const Icon = svc.icon
+            const isDeploying = deploying === svc.type
+            return (
+              <button
+                key={svc.type}
+                onClick={() => handleDeploy(svc.type, svc.name)}
+                disabled={deploying !== null}
+                className="flex w-full items-start gap-4 rounded-lg border p-4 text-left transition-colors hover:bg-muted/60 disabled:opacity-60"
+              >
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-background">
+                  <Icon className={`size-5 ${svc.iconColor}`} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold">{svc.name}</span>
+                    {isDeploying && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {svc.description}
+                  </p>
+                </div>
+              </button>
+            )
+          })}
         </div>
       </DialogContent>
     </Dialog>
   )
 }
 
+function getServiceIcon(serviceType: string) {
+  const entry = SERVICE_CATALOG.find((s) => s.type === serviceType)
+  if (entry) return { Icon: entry.icon, color: entry.iconColor }
+  return { Icon: Blocks, color: "text-muted-foreground" }
+}
+
 function ServiceCard({ service }: { service: Service }) {
   const router = useRouter()
   const style = STATUS_STYLES[service.status] ?? STATUS_STYLES.stopped
+  const { Icon, color } = getServiceIcon(service.service_type)
 
   return (
     <button
@@ -108,7 +138,7 @@ function ServiceCard({ service }: { service: Service }) {
     >
       <div className="flex items-center gap-3">
         <div className="flex size-9 items-center justify-center rounded-lg border bg-background">
-          <Database className="size-4 text-emerald-600" />
+          <Icon className={`size-4 ${color}`} />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{service.name}</p>
