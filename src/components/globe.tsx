@@ -21,6 +21,7 @@ const ARC_DURATION = 2500 // ms
 const PHI_SPEED = 0.003   // radians/frame auto-rotate
 const MIN_SCALE = 0.85
 const MAX_SCALE = 2.2
+const COBE_RADIUS = 0.8
 
 // ── 3-D helpers ─────────────────────────────────────────────────────────────
 
@@ -111,7 +112,7 @@ function projectXYZ(
   ;[x, y, z] = rotateY(x, y, z, phi)
   ;[x, y, z] = rotateX(x, y, z, theta)
   const scale = size / 2
-  const s = 0.97 * scaleMultiplier
+  const s = COBE_RADIUS * scaleMultiplier
   return {
     x: scale + x * scale * s,
     y: scale + y * scale * s,
@@ -129,8 +130,8 @@ export default function Globe({ className = "", arcs = [] }: GlobeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const phiRef = useRef(0)
-  const thetaRef = useRef(0.25)
-  const scaleRef = useRef(1.2)
+  const thetaRef = useRef(0.3)
+  const scaleRef = useRef(1)
   const sizeRef = useRef(500)
   const pointerRef = useRef({ x: 0, y: 0, down: false })
   const activeArcsRef = useRef<ActiveArc[]>([])
@@ -168,19 +169,21 @@ export default function Globe({ className = "", arcs = [] }: GlobeProps) {
 
     for (const arc of activeArcsRef.current) {
       const elapsed = now - arc.startTime
-      const progress = Math.min(elapsed / ARC_DURATION, 1)
+      const linearProgress = Math.min(elapsed / ARC_DURATION, 1)
+      const progress = 1 - (1 - linearProgress) ** 3
       const opacity = progress > 0.8 ? 1 - (progress - 0.8) / 0.2 : 1
       const src3 = latLngToXYZ(arc.srcLat, arc.srcLng)
       const dst3 = latLngToXYZ(arc.dstLat, arc.dstLng)
       const chord = clamp(1 - dot(normalize(src3), normalize(dst3)), 0, 2)
-      const arcHeight = 0.08 + chord * 0.28
+      const arcHeight = 0.04 + chord * 0.18
 
       // Draw great-circle arc up to progress.
       const SAMPLES = 56
       const limit = Math.floor(progress * SAMPLES)
       if (limit < 2) continue
 
-      let hasVisiblePoint = false
+      let hasVisibleSegment = false
+      let penDown = false
       ctx.beginPath()
       for (let i = 0; i <= limit; i++) {
         const t = i / SAMPLES
@@ -188,17 +191,42 @@ export default function Globe({ className = "", arcs = [] }: GlobeProps) {
         const altitude = 1 + Math.sin(Math.PI * t) * arcHeight
         const point: Vec3 = [curve[0] * altitude, curve[1] * altitude, curve[2] * altitude]
         const pt = projectXYZ(point, phi, theta, size, zoom)
-        if (pt.visible) hasVisiblePoint = true
-        if (i === 0) ctx.moveTo(pt.x, pt.y)
-        else ctx.lineTo(pt.x, pt.y)
+        if (!pt.visible) {
+          penDown = false
+          continue
+        }
+        if (!penDown) {
+          ctx.moveTo(pt.x, pt.y)
+          penDown = true
+        } else {
+          ctx.lineTo(pt.x, pt.y)
+          hasVisibleSegment = true
+        }
       }
-      if (!hasVisiblePoint) continue
+      if (!hasVisibleSegment) continue
 
       const baseColor = arc.color
       ctx.strokeStyle = withAlpha(baseColor, opacity * 0.82)
-      ctx.lineWidth = 1.5
+      ctx.lineWidth = 1.35
       ctx.shadowBlur = 0
       ctx.stroke()
+
+      const src = projectXYZ(src3, phi, theta, size, zoom)
+      if (src.visible) {
+        ctx.beginPath()
+        ctx.arc(src.x, src.y, 2.2, 0, Math.PI * 2)
+        ctx.fillStyle = withAlpha(baseColor, opacity * 0.65)
+        ctx.fill()
+      }
+      if (progress >= 0.995) {
+        const dst = projectXYZ(dst3, phi, theta, size, zoom)
+        if (dst.visible) {
+          ctx.beginPath()
+          ctx.arc(dst.x, dst.y, 2.5, 0, Math.PI * 2)
+          ctx.fillStyle = withAlpha(baseColor, opacity * 0.75)
+          ctx.fill()
+        }
+      }
 
       // Glowing head dot at current progress position
       if (progress < 1) {
@@ -280,18 +308,18 @@ export default function Globe({ className = "", arcs = [] }: GlobeProps) {
 
     // Create COBE globe
     globeRef.current = createGlobe(canvas, {
-      devicePixelRatio: window.devicePixelRatio || 1,
+      devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
       width: sizeRef.current,
       height: sizeRef.current,
       phi: phiRef.current,
       theta: thetaRef.current,
-      dark: 0.25,
-      diffuse: 1.4,
+      dark: 0,
+      diffuse: 0.4,
       mapSamples: 16_000,
-      mapBrightness: 3.2,
-      baseColor: [0.36, 0.5, 0.76],
+      mapBrightness: 1.2,
+      baseColor: [1, 1, 1],
       markerColor: [0.3, 0.9, 0.6],
-      glowColor: [0.45, 0.65, 0.95],
+      glowColor: [1, 1, 1],
       markers: [],
       onRender: (state) => {
         if (!pointerRef.current.down) {

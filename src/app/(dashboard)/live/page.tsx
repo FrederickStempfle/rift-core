@@ -79,14 +79,14 @@ export default function LiveTrafficPage() {
       {/* Globe + feed */}
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         {/* Globe */}
-        <div className="overflow-hidden rounded-xl border bg-gradient-to-b from-sky-100/70 via-cyan-100/45 to-emerald-100/50 dark:from-slate-900/80 dark:via-slate-800/80 dark:to-slate-900/60">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-200 dark:bg-white">
           <div className="flex items-center justify-center px-3 pt-3">
             <Globe
               className="w-full max-w-[540px]"
               arcs={arcs}
             />
           </div>
-          <p className="px-4 pb-3 text-center text-[11px] text-muted-foreground">
+          <p className="px-4 pb-3 text-center text-[11px] text-slate-500">
             Drag to rotate. Scroll to zoom.
           </p>
         </div>
