@@ -5,21 +5,29 @@ import { fetchRift } from "@/lib/rift"
 type BackendDomain = {
   id: string
   project_id: string | null
+  service_id: string | null
   domain: string
   is_primary: boolean
   ssl_status: "pending" | "provisioning" | "active" | "failed"
+  ssl_expires_at?: string | null
+  ssl_error?: string | null
+  target_url?: string | null
   project_name?: string | null
+  service_name?: string | null
 }
 
 function mapDomain(domain: BackendDomain) {
   return {
     id: domain.id,
     projectId: domain.project_id ?? null,
+    serviceId: domain.service_id ?? null,
     projectName: domain.project_name ?? null,
+    serviceName: domain.service_name ?? null,
     domain: domain.domain,
     isPrimary: domain.is_primary,
     verified: domain.ssl_status === "active" || domain.ssl_status === "provisioning",
     sslStatus: domain.ssl_status,
+    targetUrl: domain.target_url ?? null,
   }
 }
 
@@ -43,9 +51,12 @@ export async function GET(request: Request) {
 
   try {
     const projectId = searchParams.get("projectId")
+    const serviceId = searchParams.get("serviceId")
     const path = projectId
       ? `/api/domains?project_id=${encodeURIComponent(projectId)}`
-      : "/api/domains"
+      : serviceId
+        ? `/api/domains?service_id=${encodeURIComponent(serviceId)}`
+        : "/api/domains"
     const response = await fetchRift(path)
     const data = (await response.json().catch(() => [])) as BackendDomain[]
     return NextResponse.json(data.map(mapDomain), { status: response.status })
@@ -101,9 +112,16 @@ export async function PATCH(request: Request) {
     }
 
     if (payload.action === "assign") {
+      const body: Record<string, unknown> = {}
+      if (payload.serviceId) {
+        body.service_id = payload.serviceId
+        body.target_url = payload.targetUrl
+      } else {
+        body.project_id = payload.projectId ?? null
+      }
       const response = await fetchRift(`/api/domains/${payload.domainId}/assign`, {
         method: "POST",
-        body: JSON.stringify({ project_id: payload.projectId ?? null }),
+        body: JSON.stringify(body),
       })
       const data = (await response.json().catch(() => ({}))) as BackendDomain
       return NextResponse.json(mapDomain(data), { status: response.status })

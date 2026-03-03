@@ -10,13 +10,16 @@ import {
   Database,
   Eye,
   EyeOff,
+  Globe,
   Loader2,
   Play,
+  Plus,
   RefreshCw,
   Trash2,
 } from "lucide-react"
 import { useService } from "@/hooks/use-services"
 import { useServiceLogs } from "@/hooks/use-service-logs"
+import { useDomains, useServerIp } from "@/hooks/use-domains"
 import { AnimatedPage } from "@/components/animated-page"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -41,7 +44,7 @@ const STATUS_STYLES: Record<string, { dot: string; label: string; color: string 
   removing: { dot: "bg-gray-400 animate-pulse", label: "Removing", color: "text-muted-foreground" },
 }
 
-type Tab = "overview" | "connection" | "logs"
+type Tab = "overview" | "connection" | "logs" | "domains"
 
 function CopyableField({
   label,
@@ -217,6 +220,377 @@ function LogViewer({ serviceId, isActive }: { serviceId: string; isActive: boole
   )
 }
 
+type Endpoint = { label: string; targetUrl: string }
+
+function getEndpoints(connectionInfo: NonNullable<ReturnType<typeof useService>["service"]>["connection_info"]): Endpoint[] {
+  if (!connectionInfo) return []
+  const endpoints: Endpoint[] = []
+  if (connectionInfo.api_url) {
+    // Convert public URL to internal localhost URL for proxying
+    try {
+      const url = new URL(connectionInfo.api_url)
+      endpoints.push({ label: "API Gateway (Kong)", targetUrl: `http://localhost:${url.port || "8000"}` })
+    } catch {
+      endpoints.push({ label: "API Gateway (Kong)", targetUrl: connectionInfo.api_url })
+    }
+  }
+  if (connectionInfo.studio_url) {
+    try {
+      const url = new URL(connectionInfo.studio_url)
+      endpoints.push({ label: "Studio Dashboard", targetUrl: `http://localhost:${url.port || "3400"}` })
+    } catch {
+      endpoints.push({ label: "Studio Dashboard", targetUrl: connectionInfo.studio_url })
+    }
+  }
+  return endpoints
+}
+
+function AddServiceDomainDialog({
+  open,
+  onOpenChange,
+  onCreated,
+  serviceId,
+  endpoints,
+  serverIp,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCreated: () => void
+  serviceId: string
+  endpoints: Endpoint[]
+  serverIp: string | null
+}) {
+  const [step, setStep] = useState<"input" | "dns">("input")
+  const [domain, setDomain] = useState("")
+  const [selectedEndpoint, setSelectedEndpoint] = useState(0)
+  const [submitting, setSubmitting] = useState(false)
+  const [createdDomain, setCreatedDomain] = useState("")
+
+  useEffect(() => {
+    if (!open) {
+      setDomain("")
+      setStep("input")
+      setCreatedDomain("")
+      setSelectedEndpoint(0)
+    }
+  }, [open])
+
+  const isValid =
+    domain.length > 0 &&
+    /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(domain)
+
+  async function handleSubmit() {
+    if (!isValid || endpoints.length === 0) return
+    setSubmitting(true)
+    try {
+      // 1. Create domain
+      const createRes = await fetch("/api/domains", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain, isPrimary: false }),
+      })
+      if (!createRes.ok) {
+        const data = await createRes.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to add domain")
+      }
+      const created = await createRes.json()
+
+      // 2. Assign to service with target_url
+      const assignRes = await fetch("/api/domains", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domainId: created.id,
+          action: "assign",
+          serviceId,
+          targetUrl: endpoints[selectedEndpoint].targetUrl,
+        }),
+      })
+      if (!assignRes.ok) {
+        const data = await assignRes.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to assign domain to service")
+      }
+
+      setCreatedDomain(domain)
+      setStep("dns")
+      onCreated()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const getDnsName = (d: string) => {
+    const parts = d.split(".")
+    return parts.length > 2 ? parts[0] : "@"
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg gap-0 p-0 overflow-hidden">
+        <DialogHeader className="p-6 pb-4">
+          <DialogTitle>{step === "input" ? "Add Domain" : "Configure DNS"}</DialogTitle>
+          <DialogDescription>
+            {step === "input"
+              ? "Add a custom domain to access your service endpoint."
+              : `Add an A record at your DNS provider to verify ${createdDomain}.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        {step === "input" ? (
+          <div className="px-6 space-y-4 pb-6">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Domain</label>
+              <Input
+                placeholder="api.example.com"
+                value={domain}
+                onChange={(e) => setDomain(e.target.value.toLowerCase().trim())}
+                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                autoFocus
+              />
+              {domain.length > 0 && !isValid && (
+                <p className="text-xs text-destructive">Enter a valid domain name</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Endpoint</label>
+              <select
+                className="flex h-9 w-full rounded-md border bg-background px-3 text-sm outline-none"
+                value={selectedEndpoint}
+                onChange={(e) => setSelectedEndpoint(Number(e.target.value))}
+              >
+                {endpoints.map((ep, i) => (
+                  <option key={i} value={i}>
+                    {ep.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Routes to {endpoints[selectedEndpoint]?.targetUrl}
+              </p>
+            </div>
+            <Button className="w-full" disabled={!isValid || submitting} onClick={handleSubmit}>
+              {submitting && <Loader2 className="size-3.5 animate-spin" />}
+              Add Domain
+            </Button>
+          </div>
+        ) : (
+          <div className="px-6 space-y-4 pb-6">
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase">
+                A Record
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Name
+                  </span>
+                  <code className="block truncate rounded bg-background px-2 py-1 font-mono text-xs border">
+                    {getDnsName(createdDomain)}
+                  </code>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Value
+                  </span>
+                  <code className="block truncate rounded bg-background px-2 py-1 font-mono text-xs border">
+                    {serverIp ?? "…"}
+                  </code>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                DNS changes can take up to 48 hours to propagate. Once added, use the Verify button to check.
+              </p>
+            </div>
+            <Button className="w-full" onClick={() => onOpenChange(false)}>
+              Done
+            </Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ServiceDomainsTab({
+  serviceId,
+  connectionInfo,
+}: {
+  serviceId: string
+  connectionInfo: NonNullable<ReturnType<typeof useService>["service"]>["connection_info"]
+}) {
+  const { domains, mutate } = useDomains(undefined, serviceId)
+  const serverIp = useServerIp()
+  const [addOpen, setAddOpen] = useState(false)
+  const [verifying, setVerifying] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const endpoints = getEndpoints(connectionInfo)
+
+  async function handleVerify(domainId: string) {
+    setVerifying(domainId)
+    try {
+      const res = await fetch("/api/domains", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domainId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Verification failed")
+      toast.success("Domain verified — SSL certificate will be provisioned")
+      mutate()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Verification failed")
+    } finally {
+      setVerifying(null)
+    }
+  }
+
+  async function handleDelete(domainId: string) {
+    setDeleting(domainId)
+    try {
+      const res = await fetch(`/api/domains?id=${domainId}`, { method: "DELETE" })
+      if (!res.ok && res.status !== 204) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to delete domain")
+      }
+      toast.success("Domain removed")
+      mutate()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete domain")
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  const sslStatusStyle: Record<string, { dot: string; label: string }> = {
+    active: { dot: "bg-emerald-500", label: "SSL Active" },
+    provisioning: { dot: "bg-amber-500 animate-pulse", label: "Provisioning SSL" },
+    pending: { dot: "bg-gray-400", label: "Pending Verification" },
+    failed: { dot: "bg-red-500", label: "SSL Failed" },
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Custom Domains</h2>
+          <p className="text-xs text-muted-foreground">
+            Route custom domains to your service endpoints with automatic SSL.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => setAddOpen(true)}
+          disabled={endpoints.length === 0}
+        >
+          <Plus className="size-3.5" />
+          Add Domain
+        </Button>
+      </div>
+
+      {endpoints.length === 0 && (
+        <div className="rounded-lg border bg-muted/30 px-5 py-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            Service must be running to add domains. Start the service first.
+          </p>
+        </div>
+      )}
+
+      {domains.length === 0 && endpoints.length > 0 && (
+        <div className="rounded-lg border bg-muted/30 px-5 py-8 text-center">
+          <Globe className="mx-auto size-8 text-muted-foreground/50" />
+          <p className="mt-2 text-sm text-muted-foreground">
+            No custom domains configured. Add one to access your service via HTTPS.
+          </p>
+        </div>
+      )}
+
+      {domains.length > 0 && (
+        <div className="divide-y rounded-lg border">
+          {domains.map((d) => {
+            const ssl = sslStatusStyle[d.sslStatus] ?? sslStatusStyle.pending
+            const endpointLabel = endpoints.find(
+              (ep) => d.targetUrl && ep.targetUrl === d.targetUrl
+            )?.label
+
+            return (
+              <div key={d.id} className="flex items-center justify-between gap-4 px-5 py-3.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Globe className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate font-mono text-sm">{d.domain}</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`size-1.5 rounded-full ${ssl.dot}`} />
+                      <span className="text-xs text-muted-foreground">{ssl.label}</span>
+                    </div>
+                    {endpointLabel && (
+                      <span className="text-xs text-muted-foreground">
+                        → {endpointLabel}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  {d.sslStatus === "pending" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleVerify(d.id)}
+                      disabled={verifying === d.id}
+                    >
+                      {verifying === d.id ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Check className="size-3.5" />
+                      )}
+                      Verify
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDelete(d.id)}
+                    disabled={deleting === d.id}
+                  >
+                    {deleting === d.id ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="size-3.5" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {serverIp && domains.length > 0 && (
+        <div className="rounded-md border bg-muted/30 p-3">
+          <p className="text-xs text-muted-foreground">
+            Point your domain&apos;s A record to <code className="font-mono font-medium text-foreground">{serverIp}</code>
+          </p>
+        </div>
+      )}
+
+      <AddServiceDomainDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onCreated={() => mutate()}
+        serviceId={serviceId}
+        endpoints={endpoints}
+        serverIp={serverIp}
+      />
+    </div>
+  )
+}
+
 export default function ServiceDetailPage() {
   const params = useParams<{ serviceId: string }>()
   const searchParams = useSearchParams()
@@ -375,7 +749,7 @@ export default function ServiceDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b">
-        {(["overview", "connection", "logs"] as const).map((tab) => (
+        {(["overview", "connection", "domains", "logs"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setTab(tab)}
@@ -498,6 +872,10 @@ export default function ServiceDetailPage() {
             </div>
           )}
         </section>
+      )}
+
+      {activeTab === "domains" && (
+        <ServiceDomainsTab serviceId={params.serviceId} connectionInfo={service.connection_info} />
       )}
 
       {activeTab === "logs" && (
