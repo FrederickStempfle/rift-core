@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
+  Blocks,
   FolderGit2,
   GitBranch,
   Globe,
@@ -71,6 +72,10 @@ export function SearchCommand() {
             <CommandItem onSelect={() => navigate("/deployments")}>
               <Rocket />
               Deployments
+            </CommandItem>
+            <CommandItem onSelect={() => navigate("/services")}>
+              <Blocks />
+              Services
             </CommandItem>
           </CommandGroup>
           <CommandGroup heading="Configuration">

@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Blocks,
   FolderGit2,
   GitBranch,
   Globe,
@@ -58,6 +59,14 @@ export const navigationGroups: NavGroup[] = [
         url: "/analytics",
         subItems: [
           { title: "Overview", url: "/analytics" },
+        ],
+      },
+      {
+        title: "Services",
+        icon: Blocks,
+        url: "/services",
+        subItems: [
+          { title: "All Services", url: "/services" },
         ],
       },
     ],
