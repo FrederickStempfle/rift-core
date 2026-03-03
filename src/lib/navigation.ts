@@ -4,6 +4,7 @@ import {
   GitBranch,
   Globe,
   KeyRound,
+  Radio,
   Rocket,
   ScrollText,
   Settings,
@@ -58,6 +59,14 @@ export const navigationGroups: NavGroup[] = [
         url: "/analytics",
         subItems: [
           { title: "Overview", url: "/analytics" },
+        ],
+      },
+      {
+        title: "Live Traffic",
+        icon: Radio,
+        url: "/live",
+        subItems: [
+          { title: "Globe View", url: "/live" },
         ],
       },
     ],
