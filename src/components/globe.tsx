@@ -19,10 +19,14 @@ interface GlobeProps {
 
 const ARC_DURATION = 2500 // ms
 const PHI_SPEED = 0.003   // radians/frame auto-rotate
+const MIN_SCALE = 0.85
+const MAX_SCALE = 2.2
 
 // ── 3-D helpers ─────────────────────────────────────────────────────────────
 
-function latLngToXYZ(lat: number, lng: number): [number, number, number] {
+type Vec3 = [number, number, number]
+
+function latLngToXYZ(lat: number, lng: number): Vec3 {
   const phi = (90 - lat) * (Math.PI / 180)
   const theta = (lng + 180) * (Math.PI / 180)
   return [
@@ -37,46 +41,81 @@ function rotateY(
   y: number,
   z: number,
   phi: number
-): [number, number, number] {
+): Vec3 {
   const cos = Math.cos(phi)
   const sin = Math.sin(phi)
   return [x * cos + z * sin, y, -x * sin + z * cos]
 }
 
-/** Orthographic projection → canvas pixel {x, y, visible} */
-function project(
-  lat: number,
-  lng: number,
-  phi: number,
-  theta: number,
-  size: number
-): { x: number; y: number; visible: boolean } {
-  let [x, y, z] = latLngToXYZ(lat, lng)
-  ;[x, y, z] = rotateY(x, y, z, phi)
-  // tilt by theta
-  const cosT = Math.cos(theta)
-  const sinT = Math.sin(theta)
-  const y2 = y * cosT - z * sinT
-  const z2 = y * sinT + z * cosT
-  const scale = size / 2
-  return {
-    x: scale + x * scale * 0.97,
-    y: scale + y2 * scale * 0.97,
-    visible: z2 >= 0,
-  }
+function rotateX(
+  x: number,
+  y: number,
+  z: number,
+  theta: number
+): Vec3 {
+  const cos = Math.cos(theta)
+  const sin = Math.sin(theta)
+  return [x, y * cos - z * sin, y * sin + z * cos]
 }
 
-/** Sample a point along a quadratic bezier at t ∈ [0,1] */
-function bezier(
-  p0: { x: number; y: number },
-  p1: { x: number; y: number },
-  p2: { x: number; y: number },
-  t: number
-): { x: number; y: number } {
-  const mt = 1 - t
+function dot(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+function normalize(v: Vec3): Vec3 {
+  const len = Math.hypot(v[0], v[1], v[2]) || 1
+  return [v[0] / len, v[1] / len, v[2] / len]
+}
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v))
+}
+
+function slerp(a: Vec3, b: Vec3, t: number): Vec3 {
+  const from = normalize(a)
+  const to = normalize(b)
+  const cosTheta = clamp(dot(from, to), -1, 1)
+  if (cosTheta > 0.9995) {
+    return normalize([
+      from[0] + (to[0] - from[0]) * t,
+      from[1] + (to[1] - from[1]) * t,
+      from[2] + (to[2] - from[2]) * t,
+    ])
+  }
+  const theta = Math.acos(cosTheta)
+  const sinTheta = Math.sin(theta)
+  const w1 = Math.sin((1 - t) * theta) / sinTheta
+  const w2 = Math.sin(t * theta) / sinTheta
+  return [
+    from[0] * w1 + to[0] * w2,
+    from[1] * w1 + to[1] * w2,
+    from[2] * w1 + to[2] * w2,
+  ]
+}
+
+function withAlpha(color: string, alpha: number): string {
+  const match = color.match(/rgba\(([^,]+),([^,]+),([^,]+),([^)]+)\)/)
+  if (!match) return color
+  return `rgba(${match[1]},${match[2]},${match[3]},${clamp(alpha, 0, 1).toFixed(3)})`
+}
+
+/** Orthographic projection → canvas pixel {x, y, visible} */
+function projectXYZ(
+  point: Vec3,
+  phi: number,
+  theta: number,
+  size: number,
+  scaleMultiplier: number
+): { x: number; y: number; visible: boolean } {
+  let [x, y, z] = point
+  ;[x, y, z] = rotateY(x, y, z, phi)
+  ;[x, y, z] = rotateX(x, y, z, theta)
+  const scale = size / 2
+  const s = 0.97 * scaleMultiplier
   return {
-    x: mt * mt * p0.x + 2 * mt * t * p1.x + t * t * p2.x,
-    y: mt * mt * p0.y + 2 * mt * t * p1.y + t * t * p2.y,
+    x: scale + x * scale * s,
+    y: scale + y * scale * s,
+    visible: z >= 0,
   }
 }
 
@@ -91,6 +130,8 @@ export default function Globe({ className = "", arcs = [] }: GlobeProps) {
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const phiRef = useRef(0)
   const thetaRef = useRef(0.25)
+  const scaleRef = useRef(1.2)
+  const sizeRef = useRef(500)
   const pointerRef = useRef({ x: 0, y: 0, down: false })
   const activeArcsRef = useRef<ActiveArc[]>([])
   const rafRef = useRef<number | null>(null)
@@ -115,6 +156,7 @@ export default function Globe({ className = "", arcs = [] }: GlobeProps) {
     const size = overlay.width
     const phi = phiRef.current
     const theta = thetaRef.current
+    const zoom = scaleRef.current
     const now = performance.now()
 
     ctx.clearRect(0, 0, size, size)
@@ -128,61 +170,51 @@ export default function Globe({ className = "", arcs = [] }: GlobeProps) {
       const elapsed = now - arc.startTime
       const progress = Math.min(elapsed / ARC_DURATION, 1)
       const opacity = progress > 0.8 ? 1 - (progress - 0.8) / 0.2 : 1
+      const src3 = latLngToXYZ(arc.srcLat, arc.srcLng)
+      const dst3 = latLngToXYZ(arc.dstLat, arc.dstLng)
+      const chord = clamp(1 - dot(normalize(src3), normalize(dst3)), 0, 2)
+      const arcHeight = 0.08 + chord * 0.28
 
-      const src = project(arc.srcLat, arc.srcLng, phi, theta, size)
-      const dst = project(arc.dstLat, arc.dstLng, phi, theta, size)
-
-      if (!src.visible && !dst.visible) continue
-
-      // Control point: midpoint elevated outward
-      const midLat = (arc.srcLat + arc.dstLat) / 2
-      const midLng = (arc.srcLng + arc.dstLng) / 2
-      // Push midpoint out radially
-      const arcAlt = 0.35
-      const [mx, my, mz] = latLngToXYZ(midLat, midLng)
-      const factor = 1 + arcAlt
-      const ctrl = project(
-        midLat + (my * factor - my) * (180 / Math.PI),
-        midLng,
-        phi,
-        theta,
-        size
-      )
-      // Simple alternative: just lift the midpoint toward center of canvas
-      const cpx = (src.x + dst.x) / 2 - (dst.y - src.y) * 0.35
-      const cpy = (src.y + dst.y) / 2 + (dst.x - src.x) * 0.35 - size * 0.08
-      void ctrl; void mx; void mz // suppress unused warnings
-
-      // Draw arc path up to `progress` using ~40 samples
-      const SAMPLES = 40
+      // Draw great-circle arc up to progress.
+      const SAMPLES = 56
       const limit = Math.floor(progress * SAMPLES)
       if (limit < 2) continue
 
-      const cp = { x: cpx, y: cpy }
-
+      let hasVisiblePoint = false
       ctx.beginPath()
-      const p0 = bezier(src, cp, dst, 0)
-      ctx.moveTo(p0.x, p0.y)
-      for (let i = 1; i <= limit; i++) {
-        const pt = bezier(src, cp, dst, i / SAMPLES)
-        ctx.lineTo(pt.x, pt.y)
+      for (let i = 0; i <= limit; i++) {
+        const t = i / SAMPLES
+        const curve = slerp(src3, dst3, t)
+        const altitude = 1 + Math.sin(Math.PI * t) * arcHeight
+        const point: Vec3 = [curve[0] * altitude, curve[1] * altitude, curve[2] * altitude]
+        const pt = projectXYZ(point, phi, theta, size, zoom)
+        if (pt.visible) hasVisiblePoint = true
+        if (i === 0) ctx.moveTo(pt.x, pt.y)
+        else ctx.lineTo(pt.x, pt.y)
       }
+      if (!hasVisiblePoint) continue
 
       const baseColor = arc.color
-      ctx.strokeStyle = baseColor.replace(
-        /rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/,
-        `rgba($1,$2,$3,${(opacity * 0.85).toFixed(2)})`
-      )
+      ctx.strokeStyle = withAlpha(baseColor, opacity * 0.82)
       ctx.lineWidth = 1.5
       ctx.shadowBlur = 0
       ctx.stroke()
 
       // Glowing head dot at current progress position
       if (progress < 1) {
-        const head = bezier(src, cp, dst, progress)
+        const headCurve = slerp(src3, dst3, progress)
+        const headAltitude = 1 + Math.sin(Math.PI * progress) * arcHeight
+        const head = projectXYZ(
+          [headCurve[0] * headAltitude, headCurve[1] * headAltitude, headCurve[2] * headAltitude],
+          phi,
+          theta,
+          size,
+          zoom
+        )
+        if (!head.visible) continue
         const grd = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, 5)
-        grd.addColorStop(0, baseColor.replace(/,[^)]+\)/, `,${(opacity).toFixed(2)})`))
-        grd.addColorStop(1, baseColor.replace(/,[^)]+\)/, `,0)`))
+        grd.addColorStop(0, withAlpha(baseColor, opacity))
+        grd.addColorStop(1, withAlpha(baseColor, 0))
         ctx.beginPath()
         ctx.arc(head.x, head.y, 5, 0, Math.PI * 2)
         ctx.fillStyle = grd
@@ -200,11 +232,15 @@ export default function Globe({ className = "", arcs = [] }: GlobeProps) {
 
     // Derive size from parent
     const parent = canvas.parentElement!
-    const size = Math.min(parent.clientWidth, parent.clientHeight) || 500
-    canvas.width = size
-    canvas.height = size
-    overlay.width = size
-    overlay.height = size
+    const updateSize = () => {
+      const size = Math.min(parent.clientWidth, parent.clientHeight) || 500
+      sizeRef.current = size
+      canvas.width = size
+      canvas.height = size
+      overlay.width = size
+      overlay.height = size
+    }
+    updateSize()
 
     // Pointer handlers for drag-rotate
     const onPointerDown = (e: PointerEvent) => {
@@ -213,6 +249,7 @@ export default function Globe({ className = "", arcs = [] }: GlobeProps) {
     }
     const onPointerMove = (e: PointerEvent) => {
       if (!pointerRef.current.down) return
+      const size = sizeRef.current
       const dx = (e.clientX - pointerRef.current.x) / size
       const dy = (e.clientY - pointerRef.current.y) / size
       phiRef.current += dx * Math.PI * 2
@@ -225,32 +262,46 @@ export default function Globe({ className = "", arcs = [] }: GlobeProps) {
     const onPointerUp = () => {
       pointerRef.current.down = false
     }
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const direction = e.deltaY > 0 ? -1 : 1
+      const next = scaleRef.current * (1 + direction * 0.08)
+      scaleRef.current = clamp(next, MIN_SCALE, MAX_SCALE)
+    }
+
+    const resizeObserver = new ResizeObserver(updateSize)
+    resizeObserver.observe(parent)
 
     overlay.addEventListener("pointerdown", onPointerDown)
     overlay.addEventListener("pointermove", onPointerMove)
     overlay.addEventListener("pointerup", onPointerUp)
+    overlay.addEventListener("pointercancel", onPointerUp)
+    overlay.addEventListener("wheel", onWheel, { passive: false })
 
     // Create COBE globe
     globeRef.current = createGlobe(canvas, {
       devicePixelRatio: window.devicePixelRatio || 1,
-      width: size,
-      height: size,
+      width: sizeRef.current,
+      height: sizeRef.current,
       phi: phiRef.current,
       theta: thetaRef.current,
-      dark: 1,
+      dark: 0.25,
       diffuse: 1.4,
       mapSamples: 16_000,
-      mapBrightness: 6,
-      baseColor: [0.1, 0.12, 0.16],
+      mapBrightness: 3.2,
+      baseColor: [0.36, 0.5, 0.76],
       markerColor: [0.3, 0.9, 0.6],
-      glowColor: [0.08, 0.08, 0.1],
+      glowColor: [0.45, 0.65, 0.95],
       markers: [],
       onRender: (state) => {
         if (!pointerRef.current.down) {
           phiRef.current += PHI_SPEED
         }
+        state.width = sizeRef.current
+        state.height = sizeRef.current
         state.phi = phiRef.current
         state.theta = thetaRef.current
+        state.scale = scaleRef.current
       },
     })
 
@@ -258,9 +309,12 @@ export default function Globe({ className = "", arcs = [] }: GlobeProps) {
     rafRef.current = requestAnimationFrame(drawArcs)
 
     return () => {
+      resizeObserver.disconnect()
       overlay.removeEventListener("pointerdown", onPointerDown)
       overlay.removeEventListener("pointermove", onPointerMove)
       overlay.removeEventListener("pointerup", onPointerUp)
+      overlay.removeEventListener("pointercancel", onPointerUp)
+      overlay.removeEventListener("wheel", onWheel)
       globeRef.current?.destroy()
       globeRef.current = null
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
