@@ -17,6 +17,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Workflow,
 } from "lucide-react"
 import { useService } from "@/hooks/use-services"
 import { useServiceLogs } from "@/hooks/use-service-logs"
@@ -35,6 +36,16 @@ import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 
 const ACTIVE_STATUSES = new Set(["pending", "deploying", "removing"])
+
+const SERVICE_META: Record<string, { icon: typeof Database; color: string }> = {
+  supabase: { icon: Database, color: "text-emerald-600" },
+  posthog: { icon: BarChart3, color: "text-blue-600" },
+  n8n: { icon: Workflow, color: "text-orange-600" },
+}
+
+function getServiceMeta(serviceType: string) {
+  return SERVICE_META[serviceType] ?? SERVICE_META.supabase
+}
 
 const STATUS_STYLES: Record<string, { dot: string; label: string; color: string }> = {
   running: { dot: "bg-emerald-500", label: "Running", color: "text-emerald-600" },
@@ -223,11 +234,6 @@ function LogViewer({ serviceId, isActive }: { serviceId: string; isActive: boole
 
 type Endpoint = { label: string; targetUrl: string }
 
-function getServiceIcon(serviceType: string) {
-  if (serviceType === "posthog") return { Icon: BarChart3, color: "text-blue-600" }
-  return { Icon: Database, color: "text-emerald-600" }
-}
-
 function getEndpoints(connectionInfo: NonNullable<ReturnType<typeof useService>["service"]>["connection_info"]): Endpoint[] {
   if (!connectionInfo) return []
   const endpoints: Endpoint[] = []
@@ -250,6 +256,13 @@ function getEndpoints(connectionInfo: NonNullable<ReturnType<typeof useService>[
     endpoints.push({
       label: "PostHog App",
       targetUrl: connectionInfo.internal_app_url ?? connectionInfo.app_url!,
+    })
+  }
+  // n8n
+  if (connectionInfo.internal_editor_url || connectionInfo.editor_url) {
+    endpoints.push({
+      label: "n8n Editor",
+      targetUrl: connectionInfo.internal_editor_url ?? connectionInfo.editor_url!,
     })
   }
   return endpoints
@@ -573,7 +586,8 @@ export default function ServiceDetailPage() {
   const activeTab = (searchParams.get("tab") as Tab) || "overview"
   const isActive = service ? ACTIVE_STATUSES.has(service.status) : false
   const style = STATUS_STYLES[service?.status ?? ""] ?? STATUS_STYLES.stopped
-  const { Icon: ServiceIcon, color: serviceIconColor } = getServiceIcon(service?.service_type ?? "")
+  const meta = getServiceMeta(service?.service_type ?? "supabase")
+  const ServiceIcon = meta.icon
 
   function setTab(tab: Tab) {
     const newParams = new URLSearchParams(searchParams.toString())
@@ -638,7 +652,7 @@ export default function ServiceDetailPage() {
             <ArrowLeft className="size-4" />
           </button>
           <div className="flex size-9 items-center justify-center rounded-lg border bg-background">
-            <ServiceIcon className={`size-4 ${serviceIconColor}`} />
+            <ServiceIcon className={`size-4 ${meta.color}`} />
           </div>
           <div>
             <h1 className="text-lg font-semibold">{service.name}</h1>
@@ -772,13 +786,13 @@ export default function ServiceDetailPage() {
             </div>
           </section>
 
-          {(service.connection_info?.studio_url || service.connection_info?.app_url) && (
+          {(service.connection_info?.studio_url || service.connection_info?.app_url || service.connection_info?.editor_url || service.connection_info?.api_url) && (
             <section className="rounded-lg border">
               <div className="border-b bg-muted/30 px-5 py-3.5">
                 <h2 className="text-sm font-semibold">Quick Links</h2>
               </div>
               <div className="px-5 py-4 space-y-3">
-                {service.service_type === "supabase" && service.connection_info?.studio_url && (
+                {service.connection_info?.studio_url && (
                   <a
                     href={service.connection_info.studio_url}
                     target="_blank"
@@ -789,18 +803,29 @@ export default function ServiceDetailPage() {
                     Open Supabase Studio
                   </a>
                 )}
-                {service.service_type === "supabase" && service.connection_info?.api_url && (
+                {service.connection_info?.editor_url && (
+                  <a
+                    href={service.connection_info.editor_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-sm text-primary hover:underline"
+                  >
+                    <Workflow className="size-3.5" />
+                    Open n8n Editor
+                  </a>
+                )}
+                {service.connection_info?.api_url && (
                   <a
                     href={service.connection_info.api_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 text-sm text-primary hover:underline"
                   >
-                    <Database className="size-3.5" />
+                    <Globe className="size-3.5" />
                     API Endpoint
                   </a>
                 )}
-                {service.service_type === "posthog" && service.connection_info?.app_url && (
+                {service.connection_info?.app_url && (
                   <a
                     href={service.connection_info.app_url}
                     target="_blank"
@@ -822,37 +847,25 @@ export default function ServiceDetailPage() {
           <div className="border-b bg-muted/30 px-5 py-3.5">
             <h2 className="text-sm font-semibold">Connection Details</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Use these credentials to connect your applications to {service.service_type === "posthog" ? "PostHog" : "Supabase"}.
+              Use these credentials to connect your applications.
             </p>
           </div>
           {service.connection_info ? (
             <div className="divide-y">
-              {service.service_type === "supabase" && (
-                <>
-                  <CopyableField label="API URL" value={service.connection_info.api_url} />
-                  <CopyableField
-                    label="Anon Key"
-                    value={service.connection_info.anon_key}
-                    masked
-                  />
-                  <CopyableField
-                    label="Service Role Key"
-                    value={service.connection_info.service_role_key}
-                    masked
-                  />
-                  <CopyableField
-                    label="Database Connection String"
-                    value={service.connection_info.db_connection_string}
-                    masked
-                  />
-                  {service.connection_info.studio_url && (
-                    <CopyableField label="Studio URL" value={service.connection_info.studio_url} />
-                  )}
-                </>
+              {/* Supabase fields */}
+              <CopyableField label="API URL" value={service.connection_info.api_url} />
+              <CopyableField label="Anon Key" value={service.connection_info.anon_key} masked />
+              <CopyableField label="Service Role Key" value={service.connection_info.service_role_key} masked />
+              <CopyableField label="Database Connection String" value={service.connection_info.db_connection_string} masked />
+              {service.connection_info.studio_url && (
+                <CopyableField label="Studio URL" value={service.connection_info.studio_url} />
               )}
-              {service.service_type === "posthog" && (
-                <CopyableField label="App URL" value={service.connection_info.app_url} />
-              )}
+              {/* PostHog fields */}
+              <CopyableField label="App URL" value={service.connection_info.app_url} />
+              {/* n8n fields */}
+              <CopyableField label="Editor URL" value={service.connection_info.editor_url} />
+              <CopyableField label="Webhook URL" value={service.connection_info.webhook_url} />
+              <CopyableField label="Encryption Key" value={service.connection_info.encryption_key} masked />
             </div>
           ) : (
             <div className="px-5 py-8 text-center">

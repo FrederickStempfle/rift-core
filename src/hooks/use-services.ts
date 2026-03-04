@@ -21,6 +21,11 @@ export type Service = {
     // PostHog
     app_url?: string
     internal_app_url?: string
+    // n8n
+    editor_url?: string
+    internal_editor_url?: string
+    webhook_url?: string
+    encryption_key?: string
   } | null
   error_message: string | null
   started_at: string | null

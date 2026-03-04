@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart3, Blocks, Database, Loader2, Plus } from "lucide-react"
+import { BarChart3, Blocks, Database, Loader2, Plus, Workflow } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useServices, type Service } from "@/hooks/use-services"
 import { AnimatedPage } from "@/components/animated-page"
@@ -41,7 +41,20 @@ const SERVICE_CATALOG = [
     icon: BarChart3,
     iconColor: "text-blue-600",
   },
+  {
+    type: "n8n",
+    name: "n8n",
+    description: "Workflow automation platform. Build complex automations with a visual editor and 400+ integrations.",
+    icon: Workflow,
+    iconColor: "text-orange-600",
+  },
 ] as const
+
+function getServiceIcon(serviceType: string) {
+  const entry = SERVICE_CATALOG.find((s) => s.type === serviceType)
+  if (entry) return { Icon: entry.icon, color: entry.iconColor }
+  return { Icon: Blocks, color: "text-muted-foreground" }
+}
 
 function DeployServiceDialog({
   open,
@@ -118,12 +131,6 @@ function DeployServiceDialog({
       </DialogContent>
     </Dialog>
   )
-}
-
-function getServiceIcon(serviceType: string) {
-  const entry = SERVICE_CATALOG.find((s) => s.type === serviceType)
-  if (entry) return { Icon: entry.icon, color: entry.iconColor }
-  return { Icon: Blocks, color: "text-muted-foreground" }
 }
 
 function ServiceCard({ service }: { service: Service }) {
