@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { GitBranch, Globe, Plus, Search, Loader2, Link, ChevronDown } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useProjects } from "@/hooks/use-projects"
 import { AnimatedPage } from "@/components/animated-page"
 import { AnimatedList, AnimatedListItem } from "@/components/animated-list"
@@ -404,7 +404,8 @@ function NewProjectDialog({
 }
 
 export default function ProjectsPage() {
-  const [open, setOpen] = useState(false)
+  const searchParams = useSearchParams()
+  const [open, setOpen] = useState(searchParams.get("new") === "true")
   const { projects, isLoading: loading, error, mutate } = useProjects()
 
   return (

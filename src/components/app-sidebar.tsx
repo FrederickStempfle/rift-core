@@ -5,12 +5,16 @@ import {
   BadgeCheck,
   ChevronDown,
   ChevronUp,
+  FolderGit2,
   LogOut,
+  Plus,
   Rocket,
 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
 import { projectNavItems } from "@/lib/project-navigation"
+import { useProjects } from "@/hooks/use-projects"
 
 import {
   Sidebar,
@@ -68,6 +72,17 @@ function NavGroup({
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
+            if (item.title === "Projects") {
+              return (
+                <ProjectsNavGroup
+                  key="Projects"
+                  getGroupOpen={getGroupOpen}
+                  setGroupOpen={setGroupOpen}
+                  defaultOpen={defaultOpen}
+                />
+              )
+            }
+
             const isGroupActive = pathname.startsWith(item.url)
             const isOpen = getGroupOpen(item.title, defaultOpen)
 
@@ -109,34 +124,118 @@ function NavGroup({
   )
 }
 
-function ProjectNavGroup({ projectName }: { projectName: string }) {
+function ProjectsNavGroup({
+  getGroupOpen,
+  setGroupOpen,
+  defaultOpen,
+}: {
+  getGroupOpen: (title: string, fallback: boolean) => boolean
+  setGroupOpen: (title: string, open: boolean) => void
+  defaultOpen: boolean
+}) {
   const pathname = usePathname()
-  const basePath = `/projects/${encodeURIComponent(projectName)}`
+  const router = useRouter()
+  const { projects, isLoading } = useProjects()
+  const isGroupActive = pathname.startsWith("/projects")
+  const isOpen = getGroupOpen("Projects", defaultOpen)
+
+  // Extract active project name from pathname
+  const projectMatch = pathname.match(/^\/projects\/([^/]+)/)
+  const activeProjectName = projectMatch ? decodeURIComponent(projectMatch[1]) : null
 
   return (
-    <SidebarGroup>
-      <SidebarGroupLabel className="truncate">{projectName}</SidebarGroupLabel>
-      <SidebarGroupContent>
-        <SidebarMenu>
-          {projectNavItems.map((item) => {
-            const url = item.segment ? `${basePath}/${item.segment}` : basePath
-            const isActive = item.segment
-              ? pathname.startsWith(url)
-              : pathname === basePath
-            return (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
-                  <Link href={url}>
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )
-          })}
-        </SidebarMenu>
-      </SidebarGroupContent>
-    </SidebarGroup>
+    <Collapsible
+      open={isOpen}
+      onOpenChange={(open) => setGroupOpen("Projects", open)}
+      className="group/collapsible"
+    >
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton tooltip="Projects" isActive={isGroupActive}>
+            <FolderGit2 />
+            <span>Projects</span>
+            <ChevronDown className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {isLoading ? (
+              <>
+                <SidebarMenuSubItem>
+                  <div className="px-2 py-1.5"><Skeleton className="h-4 w-24" /></div>
+                </SidebarMenuSubItem>
+                <SidebarMenuSubItem>
+                  <div className="px-2 py-1.5"><Skeleton className="h-4 w-20" /></div>
+                </SidebarMenuSubItem>
+              </>
+            ) : (
+              <>
+                {projects.map((project) => {
+                  const isThisProject = activeProjectName === project.name
+                  const projectBase = `/projects/${encodeURIComponent(project.name)}`
+
+                  if (isThisProject) {
+                    // Expanded project with sub-nav
+                    return (
+                      <React.Fragment key={project.id}>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton asChild isActive>
+                            <Link href={projectBase}>
+                              <span className="font-medium">{project.name}</span>
+                            </Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        {projectNavItems.map((navItem) => {
+                          const url = navItem.segment ? `${projectBase}/${navItem.segment}` : projectBase
+                          const isNavActive = navItem.segment
+                            ? pathname.startsWith(url)
+                            : pathname === projectBase
+                          return (
+                            <SidebarMenuSubItem key={navItem.title}>
+                              <SidebarMenuSubButton asChild isActive={isNavActive} className="pl-6">
+                                <Link href={url}>
+                                  <navItem.icon className="size-3.5" />
+                                  <span>{navItem.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          )
+                        })}
+                      </React.Fragment>
+                    )
+                  }
+
+                  // Collapsed project — just the name
+                  return (
+                    <SidebarMenuSubItem key={project.id}>
+                      <SidebarMenuSubButton asChild isActive={false}>
+                        <Link href={projectBase}>
+                          <span>{project.name}</span>
+                        </Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                  )
+                })}
+
+                {/* New Project button */}
+                <SidebarMenuSubItem>
+                  <SidebarMenuSubButton
+                    asChild
+                    isActive={false}
+                    className="text-muted-foreground"
+                  >
+                    <button onClick={() => router.push("/projects?new=true")}>
+                      <Plus className="size-3.5" />
+                      <span>New Project</span>
+                    </button>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              </>
+            )}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
   )
 }
 
@@ -152,10 +251,6 @@ export function AppSidebar() {
     .join("")
     .toUpperCase()
     .slice(0, 2)
-
-  const pathname = usePathname()
-  const projectMatch = pathname.match(/^\/projects\/([^/]+)/)
-  const activeProjectName = projectMatch ? decodeURIComponent(projectMatch[1]) : null
 
   const { getGroupOpen, setGroupOpen, setScrollTop } = useSidebarState()
   const contentRef = React.useRef<HTMLDivElement>(null)
@@ -216,9 +311,6 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent ref={contentRef} onScroll={handleScroll}>
-        {activeProjectName && (
-          <ProjectNavGroup projectName={activeProjectName} />
-        )}
         {navigationGroups.map((group) => (
           <NavGroup
             key={group.label}
