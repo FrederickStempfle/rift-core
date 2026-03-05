@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { BarChart3, Blocks, Database, FileText, Loader2, Plus, Workflow } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useServices, type Service } from "@/hooks/use-services"
 import { AnimatedPage } from "@/components/animated-page"
 import { AnimatedList, AnimatedListItem } from "@/components/animated-list"
@@ -174,8 +174,9 @@ function ServiceCard({ service }: { service: Service }) {
 }
 
 export default function ServicesPage() {
+  const searchParams = useSearchParams()
   const { services, error, isLoading, mutate } = useServices()
-  const [deployOpen, setDeployOpen] = useState(false)
+  const [deployOpen, setDeployOpen] = useState(searchParams.get("deploy") === "true")
 
   return (
     <AnimatedPage className="flex flex-col gap-6 p-4 sm:p-6">

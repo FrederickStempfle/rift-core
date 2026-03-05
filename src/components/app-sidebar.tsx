@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   BadgeCheck,
+  Blocks,
   ChevronDown,
   ChevronUp,
   FolderGit2,
@@ -14,7 +15,9 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
 import { projectNavItems } from "@/lib/project-navigation"
+import { serviceNavItems } from "@/lib/service-navigation"
 import { useProjects } from "@/hooks/use-projects"
+import { useServices } from "@/hooks/use-services"
 
 import {
   Sidebar,
@@ -76,6 +79,17 @@ function NavGroup({
               return (
                 <ProjectsNavGroup
                   key="Projects"
+                  getGroupOpen={getGroupOpen}
+                  setGroupOpen={setGroupOpen}
+                  defaultOpen={defaultOpen}
+                />
+              )
+            }
+
+            if (item.title === "Services") {
+              return (
+                <ServicesNavGroup
+                  key="Services"
                   getGroupOpen={getGroupOpen}
                   setGroupOpen={setGroupOpen}
                   defaultOpen={defaultOpen}
@@ -161,12 +175,13 @@ function ProjectsNavGroup({
           <SidebarMenuSub>
             {isLoading ? (
               <>
-                <SidebarMenuSubItem>
-                  <div className="px-2 py-1.5"><Skeleton className="h-4 w-24" /></div>
-                </SidebarMenuSubItem>
-                <SidebarMenuSubItem>
-                  <div className="px-2 py-1.5"><Skeleton className="h-4 w-20" /></div>
-                </SidebarMenuSubItem>
+                {[28, 20, 24].map((w, i) => (
+                  <SidebarMenuSubItem key={i}>
+                    <SidebarMenuSubButton className="pointer-events-none">
+                      <Skeleton className={`h-4 w-${w}`} />
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                ))}
               </>
             ) : (
               <>
@@ -227,6 +242,120 @@ function ProjectsNavGroup({
                     <button onClick={() => router.push("/projects?new=true")}>
                       <Plus className="size-3.5" />
                       <span>New Project</span>
+                    </button>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              </>
+            )}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
+  )
+}
+
+function ServicesNavGroup({
+  getGroupOpen,
+  setGroupOpen,
+  defaultOpen,
+}: {
+  getGroupOpen: (title: string, fallback: boolean) => boolean
+  setGroupOpen: (title: string, open: boolean) => void
+  defaultOpen: boolean
+}) {
+  const pathname = usePathname()
+  const router = useRouter()
+  const { services, isLoading } = useServices()
+  const isGroupActive = pathname.startsWith("/services")
+  const isOpen = getGroupOpen("Services", defaultOpen)
+
+  const serviceMatch = pathname.match(/^\/services\/([^/]+)/)
+  const activeServiceId = serviceMatch ? serviceMatch[1] : null
+
+  return (
+    <Collapsible
+      open={isOpen}
+      onOpenChange={(open) => setGroupOpen("Services", open)}
+      className="group/collapsible"
+    >
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton tooltip="Services" isActive={isGroupActive}>
+            <Blocks />
+            <span>Services</span>
+            <ChevronDown className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {isLoading ? (
+              <>
+                {[28, 20].map((w, i) => (
+                  <SidebarMenuSubItem key={i}>
+                    <SidebarMenuSubButton className="pointer-events-none">
+                      <Skeleton className={`h-4 w-${w}`} />
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                ))}
+              </>
+            ) : (
+              <>
+                {services.map((svc) => {
+                  const isThisService = activeServiceId === svc.id
+                  const serviceBase = `/services/${svc.id}`
+
+                  if (isThisService) {
+                    return (
+                      <React.Fragment key={svc.id}>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton asChild isActive>
+                            <Link href={serviceBase}>
+                              <span className="font-medium">{svc.name}</span>
+                            </Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        {serviceNavItems.map((navItem) => {
+                          const url = navItem.segment
+                            ? `${serviceBase}?tab=${navItem.segment}`
+                            : serviceBase
+                          const isNavActive = navItem.segment
+                            ? pathname === serviceBase && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === navItem.segment
+                            : pathname === serviceBase && (typeof window === "undefined" || !new URLSearchParams(window.location.search).get("tab"))
+                          return (
+                            <SidebarMenuSubItem key={navItem.title}>
+                              <SidebarMenuSubButton asChild isActive={isNavActive} className="pl-6">
+                                <Link href={url}>
+                                  <navItem.icon className="size-3.5" />
+                                  <span>{navItem.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          )
+                        })}
+                      </React.Fragment>
+                    )
+                  }
+
+                  return (
+                    <SidebarMenuSubItem key={svc.id}>
+                      <SidebarMenuSubButton asChild isActive={false}>
+                        <Link href={serviceBase}>
+                          <span>{svc.name}</span>
+                        </Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                  )
+                })}
+
+                <SidebarMenuSubItem>
+                  <SidebarMenuSubButton
+                    asChild
+                    isActive={false}
+                    className="text-muted-foreground"
+                  >
+                    <button onClick={() => router.push("/services?deploy=true")}>
+                      <Plus className="size-3.5" />
+                      <span>Deploy Service</span>
                     </button>
                   </SidebarMenuSubButton>
                 </SidebarMenuSubItem>
