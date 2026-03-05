@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart3, Blocks, Database, Loader2, Plus, Workflow } from "lucide-react"
+import { BarChart3, Blocks, Database, FileText, Loader2, Plus, Workflow } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useServices, type Service } from "@/hooks/use-services"
 import { AnimatedPage } from "@/components/animated-page"
@@ -47,6 +47,13 @@ const SERVICE_CATALOG = [
     description: "Workflow automation platform. Build complex automations with a visual editor and 400+ integrations.",
     icon: Workflow,
     iconColor: "text-orange-600",
+  },
+  {
+    type: "affine",
+    name: "AFFiNE",
+    description: "Open-source knowledge base. Write, draw, and plan with AI-powered docs, whiteboards, and databases.",
+    icon: FileText,
+    iconColor: "text-violet-600",
   },
 ] as const
 
