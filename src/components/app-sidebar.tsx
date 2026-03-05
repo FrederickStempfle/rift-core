@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { signOut, useSession } from "next-auth/react"
+import { projectNavItems } from "@/lib/project-navigation"
 
 import {
   Sidebar,
@@ -108,6 +109,37 @@ function NavGroup({
   )
 }
 
+function ProjectNavGroup({ projectName }: { projectName: string }) {
+  const pathname = usePathname()
+  const basePath = `/projects/${encodeURIComponent(projectName)}`
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel className="truncate">{projectName}</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {projectNavItems.map((item) => {
+            const url = item.segment ? `${basePath}/${item.segment}` : basePath
+            const isActive = item.segment
+              ? pathname.startsWith(url)
+              : pathname === basePath
+            return (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
+                  <Link href={url}>
+                    <item.icon />
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  )
+}
+
 export function AppSidebar() {
   const { data: session, status } = useSession()
   const user = session?.user
@@ -120,6 +152,10 @@ export function AppSidebar() {
     .join("")
     .toUpperCase()
     .slice(0, 2)
+
+  const pathname = usePathname()
+  const projectMatch = pathname.match(/^\/projects\/([^/]+)/)
+  const activeProjectName = projectMatch ? decodeURIComponent(projectMatch[1]) : null
 
   const { getGroupOpen, setGroupOpen, setScrollTop } = useSidebarState()
   const contentRef = React.useRef<HTMLDivElement>(null)
@@ -180,6 +216,9 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent ref={contentRef} onScroll={handleScroll}>
+        {activeProjectName && (
+          <ProjectNavGroup projectName={activeProjectName} />
+        )}
         {navigationGroups.map((group) => (
           <NavGroup
             key={group.label}
