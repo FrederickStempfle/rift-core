@@ -98,7 +98,7 @@ export default function FirewallPage() {
 
   if (loadingProjects) {
     return (
-      <div className="flex flex-col gap-8 p-4 sm:p-6">
+      <div className="flex flex-col gap-6 p-4 sm:p-6">
         <div>
           <Skeleton className="h-8 w-32" />
           <Skeleton className="mt-2 h-4 w-64" />
@@ -110,7 +110,7 @@ export default function FirewallPage() {
   }
 
   return (
-    <AnimatedPage className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-6 p-4 sm:p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -139,7 +139,7 @@ export default function FirewallPage() {
             <select
               value={selectedProjectId ?? ""}
               onChange={(e) => setSelectedProjectId(e.target.value)}
-              className="rounded-md border bg-background px-3 py-1.5 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="h-9 rounded-md border bg-background px-3 text-sm font-medium outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
             >
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>

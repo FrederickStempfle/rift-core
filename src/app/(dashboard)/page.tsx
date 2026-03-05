@@ -25,9 +25,9 @@ export default function Home() {
   ]
 
   return (
-    <AnimatedPage className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-6 p-4 sm:p-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Overview of your deployments and projects.
         </p>
@@ -36,7 +36,7 @@ export default function Home() {
       <AnimatedList className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
           <AnimatedListItem key={stat.label}>
-            <div className="rounded-lg border bg-surface p-5">
+            <div className="rounded-lg border bg-card p-5">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">{stat.label}</span>
                 <stat.icon className="size-4 text-muted-foreground/50" />
@@ -68,7 +68,7 @@ export default function Home() {
             <span className="text-sm font-medium">Pool Statistics</span>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-lg border bg-surface p-5">
+            <div className="rounded-lg border bg-card p-5">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Warm Workers</span>
                 <Activity className="size-4 text-muted-foreground/50" />
@@ -76,7 +76,7 @@ export default function Home() {
               <p className="mt-2 text-2xl font-bold">{poolStats.warm_workers}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">Ready to serve</p>
             </div>
-            <div className="rounded-lg border bg-surface p-5">
+            <div className="rounded-lg border bg-card p-5">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Active Workers</span>
                 <Activity className="size-4 text-muted-foreground/50" />
@@ -84,7 +84,7 @@ export default function Home() {
               <p className="mt-2 text-2xl font-bold">{poolStats.active_workers}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">Processing requests</p>
             </div>
-            <div className="rounded-lg border bg-surface p-5">
+            <div className="rounded-lg border bg-card p-5">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Suspended Deployments</span>
                 <Server className="size-4 text-muted-foreground/50" />

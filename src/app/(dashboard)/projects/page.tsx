@@ -408,10 +408,10 @@ export default function ProjectsPage() {
   const { projects, isLoading: loading, error, mutate } = useProjects()
 
   return (
-    <AnimatedPage className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-6 p-4 sm:p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
           <p className="mt-1 text-sm text-muted-foreground">Manage your deployed applications.</p>
         </div>
         <Button size="sm" onClick={() => setOpen(true)}>

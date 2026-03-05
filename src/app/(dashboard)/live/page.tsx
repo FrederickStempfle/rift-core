@@ -79,7 +79,7 @@ export default function LiveTrafficPage() {
       {/* Globe + feed */}
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         {/* Globe */}
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-200 dark:bg-white">
+        <div className="overflow-hidden rounded-xl border bg-card">
           <div className="flex items-center justify-center px-3 pt-3">
             <Globe
               className="w-full max-w-[540px]"

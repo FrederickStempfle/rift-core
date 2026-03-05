@@ -4,9 +4,7 @@ import { useState } from "react"
 import useSWR from "swr"
 import {
   Bot,
-  Check,
   ChevronDown,
-  Copy,
   Loader2,
   Plus,
   Shield,
@@ -28,6 +26,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { AnimatedPage } from "@/components/animated-page"
+import { ConfigCard, type ConfigRow } from "@/components/config-card"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,83 +53,6 @@ type WafRule = {
   enabled: boolean
   isManaged: boolean
   createdAt: string
-}
-
-type ConfigRow = {
-  env: string
-  label: string
-  description: string
-  defaultValue: string
-}
-
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
-
-function EnvBadge({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <button
-      onClick={() => {
-        navigator.clipboard.writeText(value)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
-      }}
-      className="group inline-flex items-center gap-1 rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
-    >
-      {value}
-      <span className="text-muted-foreground/40 transition-colors group-hover:text-primary/60">
-        {copied ? <Check className="size-2.5" /> : <Copy className="size-2.5" />}
-      </span>
-    </button>
-  )
-}
-
-function EnvRefCard({
-  icon: Icon,
-  title,
-  description,
-  rows,
-}: {
-  icon: React.ElementType
-  title: string
-  description: string
-  rows: ConfigRow[]
-}) {
-  return (
-    <section className="overflow-hidden rounded-lg border">
-      <div className="flex items-center gap-3 border-b bg-muted/30 px-5 py-3.5">
-        <div className="flex size-7 items-center justify-center rounded-md border bg-background">
-          <Icon className="size-3.5 text-muted-foreground" />
-        </div>
-        <div>
-          <h2 className="text-sm font-semibold">{title}</h2>
-          <p className="text-xs text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      <div className="divide-y">
-        {rows.map((row) => (
-          <div
-            key={row.env}
-            className="grid grid-cols-1 gap-2 px-5 py-3.5 sm:grid-cols-[1fr_auto] sm:items-start sm:gap-6"
-          >
-            <div className="min-w-0">
-              <p className="text-sm font-medium">{row.label}</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                {row.description}
-              </p>
-            </div>
-            <div className="flex flex-col items-start gap-1 sm:items-end">
-              <EnvBadge value={row.env} />
-              <span className="text-xs text-muted-foreground">
-                Default: <span className="font-mono text-foreground/80">{row.defaultValue}</span>
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -956,7 +878,7 @@ const honeypotRows: ConfigRow[] = [
 
 export default function SecuritySettingsPage() {
   return (
-    <AnimatedPage className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-6 p-4 sm:p-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Security</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -968,21 +890,21 @@ export default function SecuritySettingsPage() {
       <ManagedRulesSection />
       <CustomRulesSection />
 
-      <EnvRefCard
+      <ConfigCard
         icon={ShieldAlert}
         title="Abuse Protection"
         description="IP-level banning tiers, challenge settings, and bypass configuration. Set via environment variables."
         rows={abuseRows}
       />
 
-      <EnvRefCard
+      <ConfigCard
         icon={Bot}
         title="Bot Detection"
         description="Heuristic thresholds for detecting automated scanners and crawlers. Set via environment variables."
         rows={botRows}
       />
 
-      <EnvRefCard
+      <ConfigCard
         icon={Shield}
         title="Honeypot"
         description="Trap paths that catch bots ignoring robots.txt Disallow directives. Set via environment variables."

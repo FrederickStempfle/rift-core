@@ -26,6 +26,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart"
 import { Skeleton } from "@/components/ui/skeleton"
+import { AnimatedPage } from "@/components/animated-page"
 import {
   Area,
   AreaChart,
@@ -188,7 +189,7 @@ export default function AnalyticsPage() {
     })) ?? []
 
   return (
-    <div className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-6 p-4 sm:p-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -609,7 +610,7 @@ export default function AnalyticsPage() {
           )}
         </div>
       )}
-    </div>
+    </AnimatedPage>
   )
 }
 

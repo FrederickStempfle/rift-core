@@ -1,8 +1,9 @@
 import { Shield } from "lucide-react"
+import { AnimatedPage } from "@/components/animated-page"
 
 export default function SecretsPage() {
   return (
-    <div className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-6 p-4 sm:p-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Secrets</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -40,6 +41,6 @@ export default function SecretsPage() {
           </div>
         </div>
       </div>
-    </div>
+    </AnimatedPage>
   )
 }

@@ -1,3 +1,5 @@
+import { AnimatedPage } from "@/components/animated-page"
+
 export default function GitPage() {
   const repos = [
     { name: "acme/marketing-site", branch: "main", lastPush: "2 min ago", webhookActive: true },
@@ -6,7 +8,7 @@ export default function GitPage() {
   ]
 
   return (
-    <div className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-6 p-4 sm:p-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Git</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -43,6 +45,6 @@ export default function GitPage() {
           </tbody>
         </table>
       </div>
-    </div>
+    </AnimatedPage>
   )
 }

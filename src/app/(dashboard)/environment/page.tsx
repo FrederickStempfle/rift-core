@@ -1,4 +1,6 @@
 import { Plus } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { AnimatedPage } from "@/components/animated-page"
 
 export default function EnvironmentPage() {
   const envVars = [
@@ -10,7 +12,7 @@ export default function EnvironmentPage() {
   ]
 
   return (
-    <div className="flex flex-col gap-8 p-4 sm:p-6">
+    <AnimatedPage className="flex flex-col gap-6 p-4 sm:p-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
@@ -20,10 +22,10 @@ export default function EnvironmentPage() {
             Encrypted variables injected into your deployments at runtime.
           </p>
         </div>
-        <button className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+        <Button size="sm">
           <Plus className="size-3.5" />
           Add Variable
-        </button>
+        </Button>
       </div>
 
       <div className="overflow-hidden rounded-lg border">
@@ -46,6 +48,6 @@ export default function EnvironmentPage() {
           </tbody>
         </table>
       </div>
-    </div>
+    </AnimatedPage>
   )
 }
