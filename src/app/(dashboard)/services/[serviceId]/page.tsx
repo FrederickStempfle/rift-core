@@ -11,6 +11,7 @@ import {
   Database,
   Eye,
   EyeOff,
+  FileText,
   Globe,
   Loader2,
   Play,
@@ -41,6 +42,7 @@ const SERVICE_META: Record<string, { icon: typeof Database; color: string }> = {
   supabase: { icon: Database, color: "text-emerald-600" },
   posthog: { icon: BarChart3, color: "text-blue-600" },
   n8n: { icon: Workflow, color: "text-orange-600" },
+  affine: { icon: FileText, color: "text-violet-600" },
 }
 
 function getServiceMeta(serviceType: string) {
@@ -234,7 +236,12 @@ function LogViewer({ serviceId, isActive }: { serviceId: string; isActive: boole
 
 type Endpoint = { label: string; targetUrl: string }
 
-function getEndpoints(connectionInfo: NonNullable<ReturnType<typeof useService>["service"]>["connection_info"]): Endpoint[] {
+const APP_URL_LABELS: Record<string, string> = {
+  posthog: "PostHog App",
+  affine: "AFFiNE App",
+}
+
+function getEndpoints(connectionInfo: NonNullable<ReturnType<typeof useService>["service"]>["connection_info"], serviceType?: string): Endpoint[] {
   if (!connectionInfo) return []
   const endpoints: Endpoint[] = []
   // Prefer internal Docker network URLs (reachable from the engine container).
@@ -251,10 +258,9 @@ function getEndpoints(connectionInfo: NonNullable<ReturnType<typeof useService>[
       targetUrl: connectionInfo.internal_studio_url ?? connectionInfo.studio_url!,
     })
   }
-  // PostHog
   if (connectionInfo.internal_app_url || connectionInfo.app_url) {
     endpoints.push({
-      label: "PostHog App",
+      label: APP_URL_LABELS[serviceType ?? ""] ?? "App",
       targetUrl: connectionInfo.internal_app_url ?? connectionInfo.app_url!,
     })
   }
@@ -399,9 +405,11 @@ function AssignServiceDomainDialog({
 
 function ServiceDomainsTab({
   serviceId,
+  serviceType,
   connectionInfo,
 }: {
   serviceId: string
+  serviceType: string
   connectionInfo: NonNullable<ReturnType<typeof useService>["service"]>["connection_info"]
 }) {
   const { domains, mutate } = useDomains(undefined, serviceId)
@@ -409,7 +417,7 @@ function ServiceDomainsTab({
   const [addOpen, setAddOpen] = useState(false)
   const [verifying, setVerifying] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
-  const endpoints = getEndpoints(connectionInfo)
+  const endpoints = getEndpoints(connectionInfo, serviceType)
 
   async function handleVerify(domainId: string) {
     setVerifying(domainId)
@@ -832,8 +840,8 @@ export default function ServiceDetailPage() {
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 text-sm text-primary hover:underline"
                   >
-                    <BarChart3 className="size-3.5" />
-                    Open PostHog
+                    <ServiceIcon className="size-3.5" />
+                    Open {APP_URL_LABELS[service.service_type] ?? "App"}
                   </a>
                 )}
               </div>
@@ -880,7 +888,7 @@ export default function ServiceDetailPage() {
       )}
 
       {activeTab === "domains" && (
-        <ServiceDomainsTab serviceId={params.serviceId} connectionInfo={service.connection_info} />
+        <ServiceDomainsTab serviceId={params.serviceId} serviceType={service.service_type} connectionInfo={service.connection_info} />
       )}
 
       {activeTab === "logs" && (
