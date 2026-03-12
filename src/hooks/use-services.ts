@@ -18,6 +18,8 @@ export type Service = {
     anon_key?: string
     service_role_key?: string
     db_connection_string?: string
+    dashboard_username?: string
+    dashboard_password?: string
     // PostHog
     app_url?: string
     internal_app_url?: string

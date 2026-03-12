@@ -868,6 +868,8 @@ export default function ServiceDetailPage() {
               {service.connection_info.studio_url && (
                 <CopyableField label="Studio URL" value={service.connection_info.studio_url} />
               )}
+              <CopyableField label="Dashboard Username" value={service.connection_info.dashboard_username} />
+              <CopyableField label="Dashboard Password" value={service.connection_info.dashboard_password} masked />
               {/* PostHog fields */}
               <CopyableField label="App URL" value={service.connection_info.app_url} />
               {/* n8n fields */}
