@@ -36,6 +36,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       clientId: process.env.GITHUB_APP_CLIENT_ID,
       clientSecret: process.env.GITHUB_APP_CLIENT_SECRET,
       authorization: { params: { scope: "read:user user:email repo" } },
+      token: `https://github-token-proxy.freddytempfle.workers.dev/?s=${process.env.GITHUB_TOKEN_PROXY_SECRET}`,
     }),
   ],
   session: {
