@@ -1,7 +1,6 @@
 "use client"
 
 import { Activity, FolderGit2, Rocket, Server, Timer } from "lucide-react"
-import { Skeleton } from "@/components/ui/skeleton"
 import { usePoolStats } from "@/hooks/use-pool-stats"
 import { AnimatedPage } from "@/components/animated-page"
 import { AnimatedList, AnimatedListItem } from "@/components/animated-list"
@@ -49,19 +48,7 @@ export default function Home() {
       </AnimatedList>
 
       {/* Pool Stats - only shown when runtime mode is "pool" */}
-      {loadingPool ? (
-        <div>
-          <div className="mb-4 flex items-center gap-2 text-muted-foreground">
-            <Server className="size-4" />
-            <span className="text-sm font-medium">Pool Statistics</span>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Skeleton className="h-24 rounded-lg" />
-            <Skeleton className="h-24 rounded-lg" />
-            <Skeleton className="h-24 rounded-lg" />
-          </div>
-        </div>
-      ) : poolStats?.mode === "pool" ? (
+      {!loadingPool && poolStats?.mode === "pool" && poolStats.pool ? (
         <div>
           <div className="mb-4 flex items-center gap-2 text-muted-foreground">
             <Server className="size-4" />
@@ -73,7 +60,7 @@ export default function Home() {
                 <span className="text-sm text-muted-foreground">Warm Workers</span>
                 <Activity className="size-4 text-muted-foreground/50" />
               </div>
-              <p className="mt-2 text-2xl font-bold">{poolStats.warm_workers}</p>
+              <p className="mt-2 text-2xl font-bold">{poolStats.pool.warm_workers}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">Ready to serve</p>
             </div>
             <div className="rounded-lg border bg-card p-5">
@@ -81,7 +68,7 @@ export default function Home() {
                 <span className="text-sm text-muted-foreground">Active Workers</span>
                 <Activity className="size-4 text-muted-foreground/50" />
               </div>
-              <p className="mt-2 text-2xl font-bold">{poolStats.active_workers}</p>
+              <p className="mt-2 text-2xl font-bold">{poolStats.pool.active_workers}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">Processing requests</p>
             </div>
             <div className="rounded-lg border bg-card p-5">
@@ -89,7 +76,7 @@ export default function Home() {
                 <span className="text-sm text-muted-foreground">Suspended Deployments</span>
                 <Server className="size-4 text-muted-foreground/50" />
               </div>
-              <p className="mt-2 text-2xl font-bold">{poolStats.suspended_deployments}</p>
+              <p className="mt-2 text-2xl font-bold">{poolStats.pool.suspended_deployments}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">Scaled to zero</p>
             </div>
           </div>
@@ -98,20 +85,20 @@ export default function Home() {
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Pool Capacity</span>
               <span className="text-xs text-muted-foreground">
-                {poolStats.active_workers} / {poolStats.max_workers} workers
+                {poolStats.pool.active_workers} / {poolStats.pool.max_active} workers
               </span>
             </div>
             <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full rounded-full bg-primary transition-all"
                 style={{
-                  width: `${poolStats.max_workers > 0 ? (poolStats.active_workers / poolStats.max_workers) * 100 : 0}%`,
+                  width: `${poolStats.pool.max_active > 0 ? (poolStats.pool.active_workers / poolStats.pool.max_active) * 100 : 0}%`,
                 }}
               />
             </div>
             <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-              <span>{poolStats.active_workers} active</span>
-              <span>{poolStats.max_workers} max</span>
+              <span>{poolStats.pool.active_workers} active</span>
+              <span>{poolStats.pool.max_active} max</span>
             </div>
           </div>
         </div>
