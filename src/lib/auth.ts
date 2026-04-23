@@ -31,6 +31,11 @@ async function refreshGitHubToken(refreshToken: string) {
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
+  logger: {
+    error: (e) => console.error("[authjs]", e),
+    warn: (code) => console.warn("[authjs]", code),
+    debug: (msg, meta) => console.log("[authjs debug]", msg, JSON.stringify(meta ?? {})),
+  },
   providers: [
     GitHub({
       clientId: process.env.GITHUB_APP_CLIENT_ID,
