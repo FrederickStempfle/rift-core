@@ -173,11 +173,18 @@ export async function fetchRift(path: string, init: RequestInit = {}): Promise<R
       headers.set("Content-Type", "application/json")
     }
 
-    return fetch(backendUrl(path), {
-      ...init,
-      headers,
-      cache: "no-store",
-    })
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10_000)
+    try {
+      return await fetch(backendUrl(path), {
+        ...init,
+        headers,
+        cache: "no-store",
+        signal: init.signal ?? controller.signal,
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   let accessToken = await getRiftAccessToken()
