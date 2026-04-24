@@ -32,8 +32,13 @@ async function refreshGitHubToken(refreshToken: string) {
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   logger: {
-    error: (e) => console.error("[authjs]", e),
-    warn: (code) => console.warn("[authjs]", code),
+    error: (e) => {
+      const err = e as { message?: string; cause?: { message?: string; cause?: unknown } }
+      console.error("[authjs error]", err?.message ?? String(e))
+      if (err?.cause) console.error("[authjs cause]", err.cause?.message ?? JSON.stringify(err.cause))
+      if (err?.cause?.cause) console.error("[authjs cause.cause]", JSON.stringify(err.cause.cause, Object.getOwnPropertyNames(err.cause.cause as object)))
+    },
+    warn: (code) => console.warn("[authjs warn]", code),
     debug: (msg, meta) => console.log("[authjs debug]", msg, JSON.stringify(meta ?? {})),
   },
   providers: [
